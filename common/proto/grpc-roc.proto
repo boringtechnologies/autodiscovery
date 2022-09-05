@@ -1,0 +1,50 @@
+
+syntax = "proto3";
+
+// option java_multiple_files = true;
+// option java_package = "io.grpc-roc";
+// option java_outer_classname = "GrpcRocProto";
+// option objc_class_prefix = "HLW";
+
+package rpcroc;
+
+// The greeting service definition.
+service RpcRoc 
+{
+    rpc getPeerList(GetPeerList) returns (stream Peer) {}
+    rpc subscribe(Peer) returns (Empty) {}
+    rpc unsubscribe(Peer) returns (Empty) {}
+    rpc sendMessage(Message) returns (Empty) {}
+}
+
+message Empty
+{
+}
+
+// request peer list
+message GetPeerList
+{
+    // params needed?
+    string id = 1;
+}
+
+enum PeerType
+{
+    UNKNOWN = 0;
+    READER  = 0x01;
+    WRITER  = 0x02;
+}
+
+// response peer list
+message Peer
+{
+    string id = 1;
+    string group = 2;
+    uint32 type = 3;
+}
+
+message Message
+{
+    string to = 1;
+    string msg = 2;
+}
