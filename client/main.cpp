@@ -7,6 +7,7 @@
 #include <thread>
 #include <list>
 #include <atomic>
+#include <sstream>
 
 #include <grpcpp/grpcpp.h>
 
@@ -23,6 +24,15 @@ public:
         , m_group(group)
         , m_stub(rpcroc::RpcRoc::NewStub(channel))
     {}
+
+    ~Client()
+    {
+        if (m_reader.joinable())
+        {
+            unsubscribe();
+            m_reader.join();
+        }
+    }
 
 public:
 //    std::string callOne(const std::string & message);
@@ -261,45 +271,155 @@ void Client::sendMessage(const std::string & to, const std::string & msg)
 
 //******************************************************************************
 //******************************************************************************
-int main()
+void printHelp()
 {
-    std::string target = "localhost:50051";
-    grpc::CreateChannel(target, grpc::InsecureChannelCredentials());
+    std::cout << "****************************************" << std::endl
+              << "commands list:" << std::endl
+              << "  exit" << std::endl
+              << "  help" << std::endl
+              << "  getPeerInfo" << std::endl
+              << "  subscribe user_id|group_id" << std::endl
+              << "  unsubscribe" << std::endl
+              << "  sendMessage user_id|message" << std::endl
+              << "****************************************" << std::endl;
+}
 
-    rpcroc::Client client("first", "blabla", grpc::CreateChannel(target, grpc::InsecureChannelCredentials()));
-
-
-    client.getPeerList();
-
-    sleep(1);
-
-    client.subscribe();
-
-    sleep(1);
-
-    client.getPeerList();
-
-    for (uint32_t i = 0; i < 4; ++i)
+//******************************************************************************
+//******************************************************************************
+std::vector<std::string> parseCommand(const std::string & cmd)
+{
+    std::istringstream ss(cmd);
+    std::string item;
+    std::vector<std::string> elems;
+    while (std::getline(ss, item, '|'))
     {
-        client.sendMessage("first", "simple test " + std::to_string(i));
-        sleep(2);
+        elems.push_back(item);
+    }
+    return elems;
+}
+
+//******************************************************************************
+//******************************************************************************
+int main(int argc, char * argv[])
+{
+    if (argc < 2)
+    {
+        std::cout << "try " << argv[0] << " ip:port <localhost:50051>" << std::endl;
+        return 0;
     }
 
-    client.unsubscribe();
+    std::string target = argv[1];
 
-    sleep(1);
+    std::shared_ptr<rpcroc::Client> client; // (new rpcroc::Client(cmds[1], cmds[2], grpc::CreateChannel(cmds[0], grpc::InsecureChannelCredentials())));;
 
-    client.getPeerList();
-
-    client.sendMessage("first", "unsubscribed test");
-    sleep(2);
-
-    std::cout << "Done!" << std::endl;
+    printHelp();
 
     while (true)
     {
-        sleep(5);
+        std::string command;
+        std::cout << "> ";
+        std::cin >> command;
+        if (command == "exit")
+        {
+            break;
+        }
+        else if (command == "help")
+        {
+            printHelp();
+            continue;
+        }
+        else if (command == "getPeerInfo")
+        {
+            if (!client)
+            {
+                client.reset(new rpcroc::Client("none", "none", grpc::CreateChannel(target, grpc::InsecureChannelCredentials())));
+            }
+            client->getPeerList();
+            continue;
+        }
+        else if (command == "subscribe")
+        {
+            std::string params;
+            std::cin >> params;
+            std::vector<std::string> v = parseCommand(params);
+            if (v.size() != 2)
+            {
+                std::cout << "wrong params, try help" << std::endl;
+                continue;
+            }
+
+            client.reset(new rpcroc::Client(v[0], v[1], grpc::CreateChannel(target, grpc::InsecureChannelCredentials())));
+            client->subscribe();
+        }
+        else if (command == "unsubscribe")
+        {
+            if (client)
+            {
+                client->unsubscribe();
+            }
+        }
+        else if (command == "sendMessage")
+        {
+            if (!client)
+            {
+                std::cout << "not subscribed" << std::endl;
+                continue;
+            }
+
+            std::string params;
+            std::cin >> params;
+            std::vector<std::string> v = parseCommand(params);
+            if (v.size() != 2)
+            {
+                std::cout << "wrong params, try help" << std::endl;
+                continue;
+            }
+
+            client->sendMessage(v[0], v[1]);
+        }
+        else
+        {
+            std::cout << "wrong, try help" << std::endl;
+        }
     }
+
+//    std::string target = "localhost:50051";
+//    grpc::CreateChannel(target, grpc::InsecureChannelCredentials());
+
+//    rpcroc::Client client("first", "blabla", grpc::CreateChannel(target, grpc::InsecureChannelCredentials()));
+
+
+//    client.getPeerList();
+
+//    sleep(1);
+
+//    client.subscribe();
+
+//    sleep(1);
+
+//    client.getPeerList();
+
+//    for (uint32_t i = 0; i < 4; ++i)
+//    {
+//        client.sendMessage("first", "simple test " + std::to_string(i));
+//        sleep(2);
+//    }
+
+//    client.unsubscribe();
+
+//    sleep(1);
+
+//    client.getPeerList();
+
+//    client.sendMessage("first", "unsubscribed test");
+//    sleep(2);
+
+//    std::cout << "Done!" << std::endl;
+
+//    while (true)
+//    {
+//        sleep(5);
+//    }
 
     return 0;
 }
