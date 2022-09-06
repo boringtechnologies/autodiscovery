@@ -40,10 +40,6 @@ private:
 
     std::atomic<bool> m_readerStopper;
     std::thread m_reader;
-
-    std::thread m_messageLoop;
-
-    std::list<Message> m_pendingMessages;
 };
 
 //******************************************************************************
@@ -127,8 +123,6 @@ void Client::subscribe()
             {
                 std::cout << "Message from " << m.from() << " --> " << m.msg() << std::endl;
             }
-
-            sleep(1);
         }
 
         grpc::Status status = reader->Finish();
@@ -147,11 +141,7 @@ void Client::unsubscribe()
 {
     std::cout << "unsubscribe()" << std::endl;
 
-    if (m_reader.joinable())
-    {
-        m_readerStopper = true;
-        m_reader.join();
-    }
+    m_readerStopper = true;
 
     Peer peer;
     peer.set_id(m_id);
@@ -167,6 +157,11 @@ void Client::unsubscribe()
         std::cout << status.error_code() << " : " << status.error_message()
                   << std::endl;
         return;
+    }
+
+    if (m_reader.joinable())
+    {
+        m_reader.join();
     }
 }
 
@@ -276,18 +271,35 @@ int main()
 
     client.getPeerList();
 
+    sleep(1);
+
     client.subscribe();
 
-    sleep(2);
+    sleep(1);
+
     client.getPeerList();
 
-    for (uint32_t i = 0; i < 8; ++i)
+    for (uint32_t i = 0; i < 4; ++i)
     {
         client.sendMessage("first", "simple test " + std::to_string(i));
         sleep(2);
     }
 
     client.unsubscribe();
+
+    sleep(1);
+
+    client.getPeerList();
+
+    client.sendMessage("first", "unsubscribed test");
+    sleep(2);
+
+    std::cout << "Done!" << std::endl;
+
+    while (true)
+    {
+        sleep(5);
+    }
 
     return 0;
 }
