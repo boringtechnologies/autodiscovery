@@ -12,7 +12,7 @@ package rpcroc;
 service RpcRoc 
 {
     rpc getPeerList(GetPeerList) returns (stream Peer) {}
-    rpc subscribe(Peer) returns (Empty) {}
+    rpc subscribe(Peer) returns (stream Message) {}
     rpc unsubscribe(Peer) returns (Empty) {}
     rpc sendMessage(Message) returns (Empty) {}
 }
@@ -45,6 +45,7 @@ message Peer
 
 message Message
 {
-    string to = 1;
-    string msg = 2;
+    string from = 1;
+    string to = 2;
+    string msg = 3;
 }

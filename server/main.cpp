@@ -16,7 +16,7 @@
 #include <grpcpp/server.h>
 #include <grpcpp/server_builder.h>
 #include <grpcpp/server_context.h>
-#include <grpcpp/xds_server_builder.h>
+#include <grpcpp/server_builder.h>
 
 //******************************************************************************
 //******************************************************************************
@@ -35,14 +35,22 @@ class Service : public rpcroc::RpcRoc::Service
 
     grpc::Status subscribe(grpc::ServerContext * context,
                            const rpcroc::Peer * request,
-                           rpcroc::Empty * reply) override;
+                           grpc::ServerWriter<rpcroc::Message> * writer) override;
 
     grpc::Status unsubscribe(grpc::ServerContext * context,
                              const rpcroc::Peer * request,
                              rpcroc::Empty * reply) override;
 
+    grpc::Status sendMessage(grpc::ServerContext * context,
+                             const rpcroc::Message * request,
+                             rpcroc::Empty * reply) override;
+
 private:
-    std::map<std::string, rpcroc::Peer> m_peers;
+    typedef std::map<std::string, rpcroc::Peer> peers_t;
+    peers_t m_peers;
+
+    typedef std::map<std::string, grpc::ServerWriter<rpcroc::Message> * > writers_t;
+    writers_t m_writers;
 
 };
 
@@ -53,6 +61,7 @@ grpc::Status Service::getPeerList(grpc::ServerContext * context,
                                   grpc::ServerWriter<rpcroc::Peer> * writer)
 {
     std::cout << "getPeerList called from " << request->id() << std::endl;
+    std::cout << "    " << m_peers.size() << " peers" << std::endl;
     for (const std::pair<std::string, rpcroc::Peer> & p : m_peers)
     {
         writer->Write(p.second);
@@ -64,14 +73,16 @@ grpc::Status Service::getPeerList(grpc::ServerContext * context,
 //******************************************************************************
 grpc::Status Service::subscribe(grpc::ServerContext * context,
                                 const rpcroc::Peer * request,
-                                rpcroc::Empty * reply)
+                                grpc::ServerWriter<rpcroc::Message> * writer)
 {
     std::cout << "subscribe called from " << request->id() << std::endl;
     if (m_peers.find(request->id()) != m_peers.end())
     {
+        std::cout << "    user exists" << std::endl;
         return grpc::Status(grpc::StatusCode::ALREADY_EXISTS, "User exists");
     }
-    m_peers[request->id()] = *request;
+    m_peers[request->id()]   = *request;
+    m_writers[request->id()] = writer;
     return grpc::Status::OK;
 }
 
@@ -87,6 +98,50 @@ grpc::Status Service::unsubscribe(grpc::ServerContext * context,
         return grpc::Status(grpc::StatusCode::NOT_FOUND, "User not found");
     }
     m_peers.erase(request->id());
+    m_writers.erase(request->id());
+    return grpc::Status::OK;
+}
+
+//******************************************************************************
+//******************************************************************************
+grpc::Status Service::sendMessage(grpc::ServerContext * context,
+                                 const rpcroc::Message * request,
+                                 rpcroc::Empty * reply)
+{
+    std::cout << "message from " << request->from()
+              << " to " << request->to() << std::endl;
+
+    peers_t::iterator from = m_peers.find(request->from());
+    if (from == m_peers.end())
+    {
+        return grpc::Status(grpc::StatusCode::NOT_FOUND, "Sender not found");
+    }
+    if ((from->second.type() | WRITER) == 0)
+    {
+        return grpc::Status(grpc::StatusCode::PERMISSION_DENIED, "Sender not writer");
+    }
+
+    peers_t::iterator to = m_peers.find(request->to());
+    if (to == m_peers.end())
+    {
+        // TODO find and broadcast to group?
+        return grpc::Status(grpc::StatusCode::NOT_FOUND, "Receiver not found");
+    }
+    if ((to->second.type() | READER) == 0)
+    {
+        return grpc::Status(grpc::StatusCode::PERMISSION_DENIED, "Receiver not reader");
+    }
+
+    // TODO route message
+    std::cout << "send to " << request->to() << std::endl;
+    writers_t::iterator it = m_writers.find(request->to());
+    if (it == m_writers.end())
+    {
+        return grpc::Status(grpc::StatusCode::NOT_FOUND, "No writer");
+    }
+
+    it->second->Write(*request);
+
     return grpc::Status::OK;
 }
 
@@ -97,8 +152,6 @@ grpc::Status Service::unsubscribe(grpc::ServerContext * context,
 int main()
 {
     uint32_t port = 50051; // absl::GetFlag(FLAGS_port);
-
-    // grpc::XdsServerBuilder xds_builder;
 
     rpcroc::Service service;
 
