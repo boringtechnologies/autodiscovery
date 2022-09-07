@@ -38,7 +38,7 @@ public:
 //    std::string callOne(const std::string & message);
 
     void getPeerList();
-    void subscribe();
+    void subscribe(const uint32_t type = 1);
     void unsubscribe();
     void sendMessage(const std::string & to, const std::string & msg);
 
@@ -51,27 +51,6 @@ private:
     std::atomic<bool> m_readerStopper;
     std::thread m_reader;
 };
-
-//******************************************************************************
-//******************************************************************************
-//std::string Client::callOne(const std::string & message)
-//{
-//    OneRequest request;
-//    request.set_str(message);
-
-//    OneReply reply;
-
-//    grpc::ClientContext context;
-//    grpc::Status status = m_stub->callOne(&context, request, &reply);
-//    if (!status.ok())
-//    {
-//        std::cout << status.error_code() << " : " << status.error_message()
-//                  << std::endl;
-//        return "FAILED";
-//    }
-
-//    return reply.str();
-//}
 
 //******************************************************************************
 //******************************************************************************
@@ -105,7 +84,7 @@ void Client::getPeerList()
 
 //******************************************************************************
 //******************************************************************************
-void Client::subscribe()
+void Client::subscribe(const uint32_t type)
 {
     std::cout << "subscribe()" << std::endl;
 
@@ -116,12 +95,14 @@ void Client::subscribe()
     }
 
     m_readerStopper = false;
-    m_reader = std::thread([this]()
+    m_reader = std::thread([this, type]()
     {
         Peer peer;
         peer.set_id(m_id);
         peer.set_group(m_group);
-        peer.set_type(READER | WRITER);
+        peer.set_type(type == 2 ? WRITER :
+                      type == 3 ? READER | WRITER :
+                                  READER);
 
         grpc::ClientContext context;
         std::unique_ptr<grpc::ClientReader<Message> > reader(m_stub->subscribe(&context, peer));
@@ -196,77 +177,6 @@ void Client::sendMessage(const std::string & to, const std::string & msg)
     }
 }
 
-//******************************************************************************
-//******************************************************************************
-//void Client::runMessagesLoop()
-//{
-//    std::cout << "runMessagesLoop" << std::endl;
-
-//    // m_messageLoop = std::thread([this]()
-//    {
-//        std::cout << "runMessagesLoop in thread" << std::endl;
-
-//        grpc::ClientContext context;
-
-//        std::cout << "runMessagesLoop create stream" << std::endl;
-
-//        Empty empty;
-//        std::shared_ptr<grpc::ClientReader<Message> > stream(m_stub->getMessages(&context, empty));
-
-////        std::cout << "runMessagesLoop run writer" << std::endl;
-
-////        std::thread writer([stream, this]()
-////        {
-////            std::cout << "runMessagesLoop in writer" << std::endl;
-
-////            for (uint32_t i = 0; i < 32; ++i)
-////            {
-////                while (m_pendingMessages.empty())
-////                {
-////                    sleep(1);
-////                }
-
-////                std::cout << "got message" << std::endl;
-
-////                Message m = m_pendingMessages.front();
-////                m_pendingMessages.pop_front();
-
-////                stream->Write(m);
-////            }
-////            stream->WritesDone();
-////        });
-
-//        std::cout << "runMessagesLoop run reader" << std::endl;
-
-//        std::thread reader([stream, this]()
-//        {
-//            std::cout << "runMessagesLoop in reader" << std::endl;
-
-//            Message r;
-//            while (stream->Read(&r))
-//            {
-//                std::cout << "Received message from " << r.from() << " to " << r.to() << " --> " << r.msg() << std::endl;
-//            }
-
-//            sleep(1);
-//        });
-
-//        std::cout << "runMessagesLoop join" << std::endl;
-
-//        // writer.join();
-//        reader.join();
-
-//        std::cout << "runMessagesLoop finish" << std::endl;
-
-//        grpc::Status status = stream->Finish();
-//        if (!status.ok())
-//        {
-//            std::cout << status.error_code() << " : " << status.error_message()
-//                      << std::endl;
-//        }
-//    } // );
-//}
-
 } // namespace rpcroc
 
 //******************************************************************************
@@ -278,7 +188,7 @@ void printHelp()
               << "  exit" << std::endl
               << "  help" << std::endl
               << "  getPeerInfo" << std::endl
-              << "  subscribe user_id|group_id" << std::endl
+              << "  subscribe user_id|group_id|type (possible r, w, rw)" << std::endl
               << "  unsubscribe" << std::endl
               << "  sendMessage user_id|message" << std::endl
               << "****************************************" << std::endl;
@@ -342,14 +252,28 @@ int main(int argc, char * argv[])
             std::string params;
             std::cin >> params;
             std::vector<std::string> v = parseCommand(params);
-            if (v.size() != 2)
+            if (v.size() < 2)
             {
                 std::cout << "wrong params, try help" << std::endl;
                 continue;
             }
 
+            uint32_t type = 1;
+            if (v.size() > 2 && v[2].size() > 0)
+            {
+                type = v[2] == "r" ? 1 :
+                       v[2] == "w" ? 2 :
+                       v[2] == "rw" ? 3 : 0;
+            }
+
+            if (type == 0 || type > 3)
+            {
+                std::cout << "wrong type, try r, w or rw" << std::endl;
+                continue;
+            }
+
             client.reset(new rpcroc::Client(v[0], v[1], grpc::CreateChannel(target, grpc::InsecureChannelCredentials())));
-            client->subscribe();
+            client->subscribe(type);
         }
         else if (command == "unsubscribe")
         {

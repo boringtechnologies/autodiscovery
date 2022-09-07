@@ -209,7 +209,7 @@ grpc::ServerUnaryReactor * Service::sendMessage(grpc::CallbackServerContext * co
         reactor->Finish(grpc::Status(grpc::StatusCode::NOT_FOUND, "Sender not found"));
         return reactor;
     }
-    if ((from->second.type() | WRITER) == 0)
+    if ((from->second.type() & WRITER) == 0)
     {
         std::cout << "    sender not writer" << std::endl;
         reactor->Finish(grpc::Status(grpc::StatusCode::PERMISSION_DENIED, "Sender not writer"));
@@ -224,7 +224,7 @@ grpc::ServerUnaryReactor * Service::sendMessage(grpc::CallbackServerContext * co
         reactor->Finish(grpc::Status(grpc::StatusCode::NOT_FOUND, "Receiver not found"));
         return reactor;
     }
-    if ((to->second.type() | READER) == 0)
+    if ((to->second.type() & READER) == 0)
     {
         std::cout << "    receiver not reader" << std::endl;
         reactor->Finish(grpc::Status(grpc::StatusCode::PERMISSION_DENIED, "Receiver not reader"));
