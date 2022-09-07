@@ -60,7 +60,7 @@ target_link_libraries(grpc-roc-client
                       ${_PROTOBUF_LIBPROTOBUF}
                       )
 
-set(OTHER_FILES common/proto/grpc-roc.proto common/initial.txt)
+set(OTHER_FILES common/proto/grpc-roc.proto common/initial.txt README.md)
 
 set_source_files_properties(${OTHER_FILES} PROPERTIES HEADER_FILE_ONLY TRUE)
 add_custom_target(project-related-files SOURCES ${OTHER_FILES})
