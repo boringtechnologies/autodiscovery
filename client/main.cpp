@@ -30,12 +30,12 @@ public:
         if (m_reader.joinable())
         {
             unsubscribe();
-            m_reader.join();
         }
     }
 
 public:
-//    std::string callOne(const std::string & message);
+    std::string id()    const { return m_id; }
+    std::string group() const { return m_group; }
 
     void getPeerList();
     void subscribe(const uint32_t type = 1);
@@ -48,7 +48,6 @@ private:
     std::string m_id;
     std::string m_group;
 
-    std::atomic<bool> m_readerStopper;
     std::thread m_reader;
 };
 
@@ -94,7 +93,6 @@ void Client::subscribe(const uint32_t type)
         return;
     }
 
-    m_readerStopper = false;
     m_reader = std::thread([this, type]()
     {
         Peer peer;
@@ -107,13 +105,10 @@ void Client::subscribe(const uint32_t type)
         grpc::ClientContext context;
         std::unique_ptr<grpc::ClientReader<Message> > reader(m_stub->subscribe(&context, peer));
 
-        while (!m_readerStopper)
+        Message m;
+        while (reader->Read(&m))
         {
-            Message m;
-            while (reader->Read(&m))
-            {
-                std::cout << "Message from " << m.from() << " --> " << m.msg() << std::endl;
-            }
+            std::cout << "Message from " << m.from() << " --> " << m.msg() << std::endl;
         }
 
         grpc::Status status = reader->Finish();
@@ -132,7 +127,11 @@ void Client::unsubscribe()
 {
     std::cout << "unsubscribe()" << std::endl;
 
-    m_readerStopper = true;
+    if (!m_reader.joinable())
+    {
+        std::cout << "already unsubscribed" << std::endl;
+        return;
+    }
 
     Peer peer;
     peer.set_id(m_id);
@@ -279,7 +278,8 @@ int main(int argc, char * argv[])
         {
             if (client)
             {
-                client->unsubscribe();
+                // client->unsubscribe();
+                client.reset();
             }
         }
         else if (command == "sendMessage")

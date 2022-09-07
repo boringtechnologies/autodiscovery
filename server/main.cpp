@@ -48,6 +48,10 @@ class Service : public rpcroc::RpcRoc::CallbackService
                                            const rpcroc::Message * request,
                                            rpcroc::Empty * reply) override;
 
+public:
+    // hack, need to review architecture
+    void clientDisconnected(const std::string & id);
+
 private:
     peers_map_t m_peers;
 
@@ -114,23 +118,44 @@ grpc::ServerWriteReactor<rpcroc::Peer> *
 class MessageWriter : public grpc::ServerWriteReactor<rpcroc::Message>
 {
 public:
-    MessageWriter()
+    MessageWriter(Service * owner, const std::string & id)
+        : m_service(owner)
+        , m_id(id)
     {
     }
 
 public:
     void OnDone() override
     {
+        // std::cout << "OnDone()" << std::endl;
         delete this;
     }
 
     void OnWriteDone(bool /*ok*/) override
     {
+        // std::cout << "OnWriteDone()" << std::endl;
+    }
+
+    void OnCancel() override
+    {
+        // std::cout << "OnCancel()" << std::endl;
+        std::cout << m_id << " disconnected, unsubscribed" << std::endl;
+        m_service->clientDisconnected(m_id);
+        delete this;
     }
 
 private:
-
+    Service * m_service;
+    std::string m_id;
 };
+
+//******************************************************************************
+//******************************************************************************
+void Service::clientDisconnected(const std::string & id)
+{
+    m_peers.erase(id);
+    m_writers.erase(id);
+}
 
 //******************************************************************************
 //******************************************************************************
@@ -138,21 +163,22 @@ grpc::ServerWriteReactor<rpcroc::Message> *
             Service::subscribe(grpc::CallbackServerContext * context,
                                const rpcroc::Peer * request)
 {
-    std::cout << "subscribe called from " << request->id() << std::endl;
+    std::cout << "subscribe called from " << request->id() << " " << context->peer() << std::endl;
 
-    if (m_peers.find(request->id()) != m_peers.end())
+    peers_map_t::iterator it = m_peers.find(request->id());
+    if (it != m_peers.end())
     {
         std::cout << "    user exists" << std::endl;
 
-        MessageWriter * reactor = new MessageWriter;
+        MessageWriter * reactor = new MessageWriter(this, request->id());
         reactor->Finish(grpc::Status(grpc::StatusCode::ALREADY_EXISTS, "User exists"));
         return reactor;
     }
 
-    MessageWriter * w = new MessageWriter;
+    MessageWriter * w = new MessageWriter(this, request->id());
 
-    m_peers[request->id()]   = *request;
-    m_writers[request->id()] = w;
+    m_peers[request->id()]          = *request;
+    m_writers[request->id()]        = w;
 
     return w;
 }
@@ -256,6 +282,9 @@ int main()
     rpcroc::Service service;
 
     grpc::ServerBuilder builder;
+//    builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIME_MS, 2000);
+//    builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, 3000);
+//    builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 1);
     builder.RegisterService(&service);
 
     builder.AddListeningPort("0.0.0.0:" + std::to_string(port),
