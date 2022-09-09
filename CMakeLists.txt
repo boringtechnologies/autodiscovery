@@ -7,8 +7,8 @@ project(grpc-roc LANGUAGES CXX)
 
 include(cmake/common.cmake)
 
-set(BUILD_SHARED_LIBS OFF)
-set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++ -static")
+#set(BUILD_SHARED_LIBS OFF)
+#set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++ -static")
 
 # set(ZLIB_USE_STATIC_LIBS "ON")
 set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
@@ -55,7 +55,12 @@ target_link_libraries(grpc-roc-server
                       ${_PROTOBUF_LIBPROTOBUF}
                       )
 
-add_executable(grpc-roc-client client/main.cpp)
+add_executable(grpc-roc-client
+               client/main.cpp
+               client/grpcclient.h
+               client/grpcclient.cpp
+               client/juiceclient.h
+               client/juiceclient.cpp)
 target_link_libraries(grpc-roc-client
                       grpc_roc_proto
                       ${_REFLECTION}
