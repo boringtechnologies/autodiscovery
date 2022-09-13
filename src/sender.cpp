@@ -157,11 +157,30 @@ synch::Sender::addReceiver (const std::string & id,
   }
 }
 
+GstPadProbeReturn probe_call_back (GstPad *pad, GstPadProbeInfo *info,
+    gpointer user_data) {
+
+  GstPad *q_sink_pad = (GstPad *) user_data;
+  if(!gst_pad_unlink(pad, q_sink_pad)) {
+    g_printerr("failed to unlink pads in %s", __func__);
+  }
+
+  // signal to set reciever bin to NULL state
+  return GST_PAD_PROBE_REMOVE;
+}
+
 void
 synch::Sender::removeReceiver (const std::string & id)
 {
 
-  auto it = recvr_ids.find (id);
-  auto idx = std::distance (recvr_ids.begin (), it);
-
+  GstElement *bin = gst_bin_get_by_name(GST_BIN (pipeline), id.c_str());
+  if (bin == NULL) {
+    g_printerr("No such receiver in the current pipeline %s", id.c_str());
+    return;
+  }
+  GstElement *queue = gst_bin_get_by_name (GST_BIN(bin), "publisher-q");
+  GstPad *q_sink_pad = gst_element_get_static_pad (queue, "sink");
+  GstPad *tee_src_pad = gst_pad_get_peer(q_sink_pad);
+  gst_pad_add_probe (tee_src_pad, GST_PAD_PROBE_TYPE_IDLE, probe_call_back, q_sink_pad, nullptr);
+  // wait for the signal - to set reciever bin to NULL state
 }
