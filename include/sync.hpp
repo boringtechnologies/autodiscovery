@@ -23,7 +23,7 @@
 //    include other threads created by GStreamer itself.
 //
 
-namespace synch {
+namespace media {
 enum MediaType {
   Audio,
   Video,

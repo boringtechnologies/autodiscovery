@@ -4,7 +4,7 @@
 
 #define USER_OPTS "1. None\n2. Stop Sender\n3. Add Receiver\n4. Remove Receiver\n\n"
 
-void ui(synch::Sender sndr) {
+void ui(media::Sender sndr) {
     while (true) {
         int input;
         std::cout << "Please provide input"<< std::endl;
@@ -21,7 +21,7 @@ void ui(synch::Sender sndr) {
                 std::string rcvr_id;
                 std::cout << "provide host port rcvrid" << std::endl;
                 std::cin >> host >> port >> rcvr_id;
-                synch::ReceiverInfo rcvr = { host, port };
+                media::ReceiverInfo rcvr = { host, port };
                 sndr.addReceiver(rcvr_id, rcvr);
             }
             break;
@@ -40,15 +40,15 @@ void ui(synch::Sender sndr) {
     }   
     
 }
-void mloop (synch::Sender sndr) {
+void mloop (media::Sender sndr) {
     sndr.start();
 }
 
 int main() {
-    synch::CaptureDevice dev = { "/dev/video2"};
-    synch::ClockInfo clock;
+    media::CaptureDevice dev = { "/dev/video2"};
+    media::ClockInfo clock;
 
-    synch::Sender sndr("first", synch::MediaType::Video, dev, clock);
+    media::Sender sndr("first", media::MediaType::Video, dev, clock);
     std::thread loop (mloop, sndr);
     std::thread cli (ui, sndr);
  

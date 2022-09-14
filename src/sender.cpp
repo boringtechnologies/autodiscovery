@@ -37,8 +37,8 @@ bus_callback (GstBus * bus, GstMessage * msg, gpointer data)
   return TRUE;
 }
 
-synch::Sender::Sender (const std::string & id, synch::MediaType type,
-    const synch::CaptureDevice & device, const synch::ClockInfo & clock)
+media::Sender::Sender (const std::string & id, media::MediaType type,
+    const media::CaptureDevice & device, const media::ClockInfo & clock)
 {
   GstBus *
       bus;
@@ -47,13 +47,13 @@ synch::Sender::Sender (const std::string & id, synch::MediaType type,
   loop = g_main_loop_new (nullptr, FALSE);
 
   pipeline = gst_pipeline_new (id.c_str ());
-  if (type == synch::MediaType::Audio) {
+  if (type == media::MediaType::Audio) {
     source = gst_element_factory_make ("pulsesrc", "publisher-audiosrc");
     conv = gst_element_factory_make ("audioconvert", "conv");
     encoder = gst_element_factory_make ("opusenc", "publisher-audioenc");
     payloader =
         gst_element_factory_make ("rtpopuspay", "publisher-audiopayload");
-  } else if (type == synch::MediaType::Video) {
+  } else if (type == media::MediaType::Video) {
     source = gst_element_factory_make ("v4l2src", "publisher-videosrc");
     conv = gst_element_factory_make ("videoconvert", "conv");
     encoder = gst_element_factory_make ("vp8enc", "publisher-videoenc");
@@ -83,7 +83,7 @@ synch::Sender::Sender (const std::string & id, synch::MediaType type,
   g_print ("Elements linked successfully\n");
 }
 
-synch::Sender::~Sender ()
+media::Sender::~Sender ()
 {
 
   gst_object_unref (GST_OBJECT (pipeline));
@@ -92,7 +92,7 @@ synch::Sender::~Sender ()
 }
 
 void
-synch::Sender::start ()
+media::Sender::start ()
 {
 
   g_print ("Setting the pipeline to playing\n");
@@ -103,7 +103,7 @@ synch::Sender::start ()
 }
 
 void
-synch::Sender::stop ()
+media::Sender::stop ()
 {
   g_main_loop_quit (loop);
   g_print ("stopping playback\n");
@@ -111,7 +111,7 @@ synch::Sender::stop ()
 }
 
 void
-synch::Sender::addReceiver (const std::string & id,
+media::Sender::addReceiver (const std::string & id,
     const ReceiverInfo & receiver)
 {
 
@@ -200,7 +200,7 @@ probe_call_back (GstPad * pad, GstPadProbeInfo * info, gpointer user_data)
 }
 
 void
-synch::Sender::removeReceiver (const std::string & id)
+media::Sender::removeReceiver (const std::string & id)
 {
 
   GstElement *
