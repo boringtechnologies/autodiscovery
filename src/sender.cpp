@@ -57,7 +57,9 @@ media::Sender::Sender(const std::string &id, media::MediaType type,
         g_object_set(capsf, "caps",
                      gst_caps_from_string("video/x-raw,framerate=30/1"), NULL);
         encoder = gst_element_factory_make("vp8enc", "publisher-videoenc");
-        g_object_set(encoder, "deadline", 1, "keyframe-max-dist", 90, NULL);
+        // Generates a keyframe every 10s, we can drop that part when we wire
+        // up RTCP feedback
+        g_object_set(encoder, "deadline", 1, "keyframe-max-dist", 300, NULL);
         payloader =
             gst_element_factory_make("rtpvp8pay", "publisher-videopayload");
     }
