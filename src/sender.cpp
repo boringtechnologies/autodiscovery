@@ -62,20 +62,22 @@ synch::Sender::Sender (const std::string & id, synch::MediaType type,
   }
   // TODO: Add a muxer when we want both audio and video from a single publisher
   tee = gst_element_factory_make ("tee", "publisher-tee");
-  fakesink = gst_element_factory_make("fakesink", "fakesink");
+  queue = gst_element_factory_make ("queue", "publisher-queue");
+  fakesink = gst_element_factory_make ("fakesink", "fakesink");
 
 
-  g_object_set (G_OBJECT (source), "device", device.device.c_str(), nullptr);
+  g_object_set (G_OBJECT (source), "device", device.device.c_str (), nullptr);
 
   bus = gst_pipeline_get_bus (GST_PIPELINE (pipeline));
   bus_watch_id = gst_bus_add_watch (bus, bus_callback, loop);
   gst_object_unref (bus);
 
   gst_bin_add_many (GST_BIN (pipeline),
-      source, conv, encoder, payloader, tee, fakesink, nullptr);
+      source, conv, encoder, payloader, tee, queue, fakesink, nullptr);
 
-  if (!gst_element_link_many (source, conv, encoder, payloader, tee, fakesink, nullptr)) {
-    g_printerr ("failed to link the elements");
+  if (!gst_element_link_many (source, conv, encoder, payloader, tee, queue,
+          fakesink, nullptr)) {
+    g_printerr ("failed to link the elements\n");
     return;
   }
   g_print ("Elements linked successfully\n");
@@ -103,6 +105,7 @@ synch::Sender::start ()
 void
 synch::Sender::stop ()
 {
+  g_main_loop_quit (loop);
   g_print ("stopping playback\n");
   gst_element_set_state (pipeline, GST_STATE_NULL);
 }
@@ -112,60 +115,87 @@ synch::Sender::addReceiver (const std::string & id,
     const ReceiverInfo & receiver)
 {
 
-  auto p = recvr_ids.insert (id);
-  if (p.second == false) {
-    g_printerr ("failed to insert %s. Can't add receiver", id.c_str ());
-    return;
-  }
-  auto idx = std::distance (recvr_ids.begin (), p.first) + 1;
-
-  gchar *
-      tee_src_pad = g_strdup_printf ("src_%u", (guint) idx);
-
   GstElement *
-      bin = gst_bin_new (id.c_str ());
+      bin = gst_bin_get_by_name (GST_BIN (pipeline), id.c_str ());
+  if (bin != NULL) {
+    g_printerr("Receiver id %s already exists\n", id.c_str());
+    return;
+  } 
+  bin = gst_bin_new (id.c_str ());
+  g_assert (bin != NULL);
   GstElement *
       rtpbin = gst_element_factory_make ("rtpbin", "publisher-rtpbin");
   GstElement *
       queue = gst_element_factory_make ("queue", "publisher-q");
   GstElement *
       udpsink = gst_element_factory_make ("udpsink", "publisher-udpsink");
-  
-  g_object_set (G_OBJECT (udpsink), "host", receiver.address.c_str(),
+
+  if (!bin || !queue || !rtpbin || !udpsink) {
+    g_printerr("failed to create elements in addReceiver");
+    return;
+  }
+
+  g_object_set (G_OBJECT (udpsink), "host", receiver.address.c_str (),
       "port", receiver.port, nullptr);
-  
+
+  gst_bin_add_many (GST_BIN (bin), queue, rtpbin, udpsink, nullptr);
+
+  GstPad *
+      rtp_send_sinkpad =
+      gst_element_request_pad_simple (rtpbin, "send_rtp_sink_%u");
+  GstPad *
+      queue_src_pad = gst_element_get_static_pad (queue, "src");
+
+  if (GST_PAD_LINK_OK != gst_pad_link (queue_src_pad, rtp_send_sinkpad))
+    g_print ("failed to link queue_src_pad and rtp_send_sinkpad");
+
+  if (! gst_element_link_many(rtpbin, udpsink, NULL))
+      g_print ("failed to link rtpbin and udpsink");
+
   gst_bin_add (GST_BIN (pipeline), bin);
   gst_element_sync_state_with_parent (bin);
 
-  gst_bin_add_many (GST_BIN (bin), queue, rtpbin, udpsink, nullptr);
-  gst_element_sync_state_with_parent (queue);
-  gst_element_sync_state_with_parent (rtpbin);
-  gst_element_sync_state_with_parent (udpsink);
- 
-  if (!gst_element_link_pads (queue, "src", rtpbin, "send_rtp_sink_0")) {
-    g_printerr ("Failed to link queue and rtpbin");
-    return;
-  }
 
-  if (!gst_element_link_pads (rtpbin, "send_rtp_src_0", udpsink, "sink")) {
-    g_printerr ("Failed to link rtpbin and udpsink");
-    return;
-  }
+  GstPad *
+      queue_sink_pad = gst_element_get_static_pad (queue, "sink");
+  GstPad *
+      bin_ghost_pad = gst_ghost_pad_new ("sink", queue_sink_pad);
 
-  if (!gst_element_link_pads (tee, tee_src_pad, queue, "sink")) {
-    g_printerr ("Failed to link tee and queue");
-  }
+  gst_element_add_pad (bin, bin_ghost_pad);
+  if (!gst_element_link (tee, bin))
+    g_printerr ("failed to link tee and bin");
+
+  GST_DEBUG_BIN_TO_DOT_FILE (GST_BIN (pipeline), GST_DEBUG_GRAPH_SHOW_ALL,
+      "pipeline");
 }
 
-GstPadProbeReturn probe_call_back (GstPad *pad, GstPadProbeInfo *info,
-    gpointer user_data) {
+gboolean
+set_to_null (gpointer data)
+{
+  GstElement *
+      bin = (GstElement *) data;
+  GstStateChangeReturn ret = gst_element_set_state (bin, GST_STATE_NULL);
+  g_print ("state change return %d\n", ret);
+  GstElement * pipeline = (GstElement *) gst_element_get_parent(bin);
+  gst_bin_remove (GST_BIN (pipeline), bin);
+  //TODO unref bin
+  return FALSE;
+}
 
-  GstPad *q_sink_pad = (GstPad *) user_data;
-  if(!gst_pad_unlink(pad, q_sink_pad)) {
-    g_printerr("failed to unlink pads in %s", __func__);
+GstPadProbeReturn
+probe_call_back (GstPad * pad, GstPadProbeInfo * info, gpointer user_data)
+{
+  g_print ("%s \n", __func__);
+
+  GstElement *
+      bin = (GstElement *) user_data;
+  GstPad *
+      peer_pad = gst_pad_get_peer (pad);
+  if (!gst_pad_unlink (pad, peer_pad)) {
+    g_printerr ("failed to unlink pads in %s\n", __func__);
   }
-
-  // signal to set reciever bin to NULL state
+  gst_object_unref (peer_pad);
+  g_idle_add (set_to_null, bin);
   return GST_PAD_PROBE_REMOVE;
 }
 
@@ -173,14 +203,22 @@ void
 synch::Sender::removeReceiver (const std::string & id)
 {
 
-  GstElement *bin = gst_bin_get_by_name(GST_BIN (pipeline), id.c_str());
+  GstElement *
+      bin = gst_bin_get_by_name (GST_BIN (pipeline), id.c_str ());
   if (bin == NULL) {
-    g_printerr("No such receiver in the current pipeline %s", id.c_str());
+    g_printerr ("No such receiver in the current pipeline %s\n", id.c_str ());
     return;
   }
-  GstElement *queue = gst_bin_get_by_name (GST_BIN(bin), "publisher-q");
-  GstPad *q_sink_pad = gst_element_get_static_pad (queue, "sink");
-  GstPad *tee_src_pad = gst_pad_get_peer(q_sink_pad);
-  gst_pad_add_probe (tee_src_pad, GST_PAD_PROBE_TYPE_IDLE, probe_call_back, q_sink_pad, nullptr);
-  // wait for the signal - to set reciever bin to NULL state
+
+  GstPad *
+      bin_ghost_pad = gst_element_get_static_pad (bin, "sink");
+
+  GstPad *
+      tee_src_pad = gst_pad_get_peer (bin_ghost_pad);
+
+  // TODO bitwise OR works only we do typecast. Know why
+  gst_pad_add_probe (tee_src_pad,
+      GST_PAD_PROBE_TYPE_IDLE, probe_call_back, bin, nullptr);
+  gst_object_unref (bin_ghost_pad);
+  gst_object_unref (tee_src_pad);
 }

@@ -58,7 +58,7 @@ class Sender {
 private:
     GMainLoop *loop;
     guint bus_watch_id;
-    GstElement *pipeline, *source, *conv, *encoder, *payloader, *tee, *fakesink;
+    GstElement *pipeline, *source, *conv, *encoder, *payloader, *tee, *queue, *fakesink;
 public:
   // The constructor takes:
   //   * An instance id, for easier debugging
@@ -95,7 +95,6 @@ public:
   void addReceiver(const std::string &id, const ReceiverInfo &receiver);
 
   void removeReceiver(const std::string &id);
-  std::unordered_set<std::string> recvr_ids;
 };
 
 struct PlaybackDevice {
