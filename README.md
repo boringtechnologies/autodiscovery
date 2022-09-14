@@ -3,6 +3,19 @@ grpc-roc demo client-server
 
 simple build flow
 
+install libjuice
+
+```
+git clone https://github.com/paullouisageneau/libjuice.git
+cd libjuice/
+mkdir build
+cd build/
+cmake ..
+make juice-static
+sudo make install
+sudo cp libjuice-static.a /usr/local/lib/
+```
+
 install gRPC as described https://github.com/grpc/grpc/blob/master/BUILDING.md
 
 ```
