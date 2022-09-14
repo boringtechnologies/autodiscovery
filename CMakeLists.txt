@@ -5,6 +5,7 @@ project(sndrcv VERSION 0.1.0 DESCRIPTION "SyncedGroups library using gstreamer")
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
+set(CMAKE_EXPORT_COMPILE_COMMANDS True)
 
 find_package(PkgConfig REQUIRED)
 
@@ -27,6 +28,6 @@ add_executable(${PROJECT_NAME}
 		src/receiver.cpp
 		src/sender.cpp)
 
-target_include_directories(${PROJECT_NAME} PRIVATE 
+target_include_directories(${PROJECT_NAME} PRIVATE
 		${GST_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME} ${GST_LIBRARIES})
