@@ -39,8 +39,8 @@ bus_callback (GstBus * bus, GstMessage * msg, gpointer data)
 media::Sender::Sender (const std::string & id, media::MediaType type,
     const media::CaptureDevice & device, const media::ClockInfo & clock) : thread(nullptr)
 {
-  GstBus *
-      bus;
+  GstBus *bus;
+  GstElement *source, *conv, *capsf, *encoder, *payloader, *queue, *fakesink;
   gst_init (nullptr, nullptr);
 
   loop = g_main_loop_new (nullptr, FALSE);
@@ -55,6 +55,10 @@ media::Sender::Sender (const std::string & id, media::MediaType type,
   } else if (type == media::MediaType::Video) {
     source = gst_element_factory_make ("v4l2src", "publisher-videosrc");
     conv = gst_element_factory_make ("videoconvert", "conv");
+    capsf = gst_element_factory_make ("capsfilter", "capsf");
+    g_object_set(capsf,
+            "caps", gst_caps_from_string("video/x-raw,framerate=30/1"),
+            NULL);
     encoder = gst_element_factory_make ("vp8enc", "publisher-videoenc");
     g_object_set(encoder,
             "deadline", 1,
@@ -68,7 +72,6 @@ media::Sender::Sender (const std::string & id, media::MediaType type,
   queue = gst_element_factory_make ("queue", "publisher-queue");
   fakesink = gst_element_factory_make ("fakesink", "fakesink");
 
-
   g_object_set (G_OBJECT (source), "device", device.device.c_str (), nullptr);
 
   bus = gst_pipeline_get_bus (GST_PIPELINE (pipeline));
@@ -76,9 +79,9 @@ media::Sender::Sender (const std::string & id, media::MediaType type,
   gst_object_unref (bus);
 
   gst_bin_add_many (GST_BIN (pipeline),
-      source, conv, encoder, payloader, tee, queue, fakesink, nullptr);
+      source, conv, capsf, encoder, payloader, tee, queue, fakesink, nullptr);
 
-  if (!gst_element_link_many (source, conv, encoder, payloader, tee, queue,
+  if (!gst_element_link_many (source, conv, capsf, encoder, payloader, tee, queue,
           fakesink, nullptr)) {
     g_printerr ("failed to link the elements\n");
     return;
@@ -88,7 +91,6 @@ media::Sender::Sender (const std::string & id, media::MediaType type,
 
 media::Sender::~Sender ()
 {
-
   gst_object_unref (GST_OBJECT (pipeline));
   g_source_remove (bus_watch_id);
   g_main_loop_unref (loop);
