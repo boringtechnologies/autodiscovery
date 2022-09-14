@@ -7,8 +7,8 @@ project(grpc-roc LANGUAGES CXX)
 
 include(cmake/common.cmake)
 
-#set(BUILD_SHARED_LIBS OFF)
-#set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++ -static")
+set(BUILD_SHARED_LIBS OFF)
+set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++ -static")
 
 # set(ZLIB_USE_STATIC_LIBS "ON")
 set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
@@ -65,7 +65,7 @@ add_executable(grpc-roc-client
                client/juiceclient.cpp)
 target_link_libraries(grpc-roc-client PRIVATE
                       grpc_roc_proto
-                      LibJuice::LibJuice
+                      juice-static
                       ${_REFLECTION}
                       ${_GRPC_GRPCPP}
                       ${_PROTOBUF_LIBPROTOBUF}
