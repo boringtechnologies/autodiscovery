@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include <sync.hpp>
 #include <thread>
 #include <iostream>
@@ -40,9 +41,26 @@ void ui(media::Sender &sndr) {
     }
 }
 
-int main() {
-    media::CaptureDevice dev = { "/dev/video2"};
+int main(int argc, char **argv) {
     media::ClockInfo clock;
+    media::MediaType type = media::MediaType::Video;
+    media::CaptureDevice dev = { argc > 2 ? argv[2] : "/dev/video0"};
+
+    if (argc > 2) {
+        switch (argv[1][0]) {
+            case 'v':
+                type = media::MediaType::Video;
+                break;
+
+            case 'a':
+                type = media::MediaType::Audio;
+                break;
+
+            default:
+                std::cerr << "Unknown media type " << argv[1] << std::endl;
+                std::exit(-1);
+        }
+    }
 
     media::Sender sndr("first", media::MediaType::Video, dev, clock);
     sndr.start();
