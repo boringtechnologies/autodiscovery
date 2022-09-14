@@ -14,6 +14,8 @@ include(cmake/common.cmake)
 set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
 find_package(ZLIB REQUIRED)
 
+find_package(LibJuice REQUIRED)
+
 # Proto files
 get_filename_component(grpc_roc_proto "common/proto/grpc-roc.proto" ABSOLUTE)
 get_filename_component(grpc_roc_proto_path "${grpc_roc_proto}" PATH)
@@ -61,8 +63,9 @@ add_executable(grpc-roc-client
                client/grpcclient.cpp
                client/juiceclient.h
                client/juiceclient.cpp)
-target_link_libraries(grpc-roc-client
+target_link_libraries(grpc-roc-client PRIVATE
                       grpc_roc_proto
+                      LibJuice::LibJuice
                       ${_REFLECTION}
                       ${_GRPC_GRPCPP}
                       ${_PROTOBUF_LIBPROTOBUF}

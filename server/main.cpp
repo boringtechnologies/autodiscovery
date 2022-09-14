@@ -201,14 +201,14 @@ grpc::ServerUnaryReactor * Service::unsubscribe(grpc::CallbackServerContext * co
         return reactor;
     }
 
-    Message m;
-    m.set_from("core");
-    m.set_to(request->id());
-    m.set_msg("Bye!");
+//    Message m;
+//    m.set_from("core");
+//    m.set_to(request->id());
+//    m.set_msg("Bye!");
 
-    MessageWriter * mw = m_writers.at(request->id());
-    mw->StartWrite(&m);
-    mw->Finish(grpc::Status::OK);
+//    MessageWriter * mw = m_writers.at(request->id());
+//    mw->StartWrite(&m);
+//    mw->Finish(grpc::Status::OK);
 
     m_peers.erase(request->id());
     m_writers.erase(request->id());

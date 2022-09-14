@@ -41,6 +41,7 @@ message Peer
     string id = 1;
     string group = 2;
     uint32 type = 3;
+    string sdp = 4;
 }
 
 message Message
