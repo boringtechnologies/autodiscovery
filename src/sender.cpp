@@ -120,7 +120,7 @@ media::Sender::addReceiver (const std::string & id,
   if (bin != NULL) {
     g_printerr("Receiver id %s already exists\n", id.c_str());
     return;
-  } 
+  }
   bin = gst_bin_new (id.c_str ());
   g_assert (bin != NULL);
   GstElement *

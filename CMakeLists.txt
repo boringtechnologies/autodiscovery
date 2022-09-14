@@ -23,7 +23,7 @@ include_directories (${CMAKE_SOURCE_DIR}/include)
 # 	src/receiver.cpp
 # )
 
-add_executable(${PROJECT_NAME} 
+add_executable(${PROJECT_NAME}
 		test/app.cpp
 		src/receiver.cpp
 		src/sender.cpp)

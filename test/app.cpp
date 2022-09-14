@@ -37,8 +37,7 @@ void ui(media::Sender sndr) {
              std::cout << "invalid command" << std::endl;
             break;
         }
-    }   
-    
+    }
 }
 void mloop (media::Sender sndr) {
     sndr.start();
@@ -51,7 +50,6 @@ int main() {
     media::Sender sndr("first", media::MediaType::Video, dev, clock);
     std::thread loop (mloop, sndr);
     std::thread cli (ui, sndr);
- 
 
     loop.join();
     std::cout << "loop joined" << std::endl;
