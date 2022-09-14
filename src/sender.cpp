@@ -56,6 +56,10 @@ media::Sender::Sender (const std::string & id, media::MediaType type,
     source = gst_element_factory_make ("v4l2src", "publisher-videosrc");
     conv = gst_element_factory_make ("videoconvert", "conv");
     encoder = gst_element_factory_make ("vp8enc", "publisher-videoenc");
+    g_object_set(encoder,
+            "deadline", 1,
+            "keyframe-max-dist", 90,
+            NULL);
     payloader =
         gst_element_factory_make ("rtpvp8pay", "publisher-videopayload");
   }
