@@ -4,7 +4,7 @@
 
 #define USER_OPTS "1. None\n2. Stop Sender\n3. Add Receiver\n4. Remove Receiver\n\n"
 
-void ui(media::Sender sndr) {
+void ui(media::Sender &sndr) {
     while (true) {
         int input;
         std::cout << "Please provide input"<< std::endl;
@@ -39,20 +39,16 @@ void ui(media::Sender sndr) {
         }
     }
 }
-void mloop (media::Sender sndr) {
-    sndr.start();
-}
 
 int main() {
     media::CaptureDevice dev = { "/dev/video2"};
     media::ClockInfo clock;
 
     media::Sender sndr("first", media::MediaType::Video, dev, clock);
-    std::thread loop (mloop, sndr);
-    std::thread cli (ui, sndr);
+    sndr.start();
 
-    loop.join();
-    std::cout << "loop joined" << std::endl;
+    std::thread cli(ui, std::ref(sndr));
+
     cli.join();
     std::cout << "exiting..";
 }

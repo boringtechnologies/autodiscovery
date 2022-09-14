@@ -3,9 +3,11 @@
 
 #include <chrono>
 #include <cstdint>
+#include <memory>
 #include <string>
+#include <thread>
+
 #include <gst/gst.h>
-#include <unordered_set>
 
 // Synced Groups API
 //
@@ -54,11 +56,11 @@ struct CaptureDevice {
 };
 
 class Sender {
-
 private:
-    GMainLoop *loop;
-    guint bus_watch_id;
-    GstElement *pipeline, *source, *conv, *encoder, *payloader, *tee, *queue, *fakesink;
+  std::unique_ptr<std::thread> thread;
+  GMainLoop *loop;
+  guint bus_watch_id;
+  GstElement *pipeline, *source, *conv, *encoder, *payloader, *tee, *queue, *fakesink;
 public:
   // The constructor takes:
   //   * An instance id, for easier debugging

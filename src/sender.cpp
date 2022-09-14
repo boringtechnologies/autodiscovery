@@ -1,9 +1,8 @@
-#include "gst/gstbin.h"
-#include "gst/gstelement.h"
-#include "gst/gstelementfactory.h"
-#include "gst/gstutils.h"
-#include <iterator>
 #include <sync.hpp>
+
+#include <iterator>
+#include <memory>
+#include <thread>
 
 static gboolean
 bus_callback (GstBus * bus, GstMessage * msg, gpointer data)
@@ -38,7 +37,7 @@ bus_callback (GstBus * bus, GstMessage * msg, gpointer data)
 }
 
 media::Sender::Sender (const std::string & id, media::MediaType type,
-    const media::CaptureDevice & device, const media::ClockInfo & clock)
+    const media::CaptureDevice & device, const media::ClockInfo & clock) : thread(nullptr)
 {
   GstBus *
       bus;
@@ -94,12 +93,13 @@ media::Sender::~Sender ()
 void
 media::Sender::start ()
 {
+  thread = std::make_unique<std::thread>([this] {
+    g_print ("Setting the pipeline to playing\n");
+    gst_element_set_state (pipeline, GST_STATE_PLAYING);
 
-  g_print ("Setting the pipeline to playing\n");
-  gst_element_set_state (pipeline, GST_STATE_PLAYING);
-
-  g_print ("Running mainloop\n");
-  g_main_loop_run (loop);
+    g_print ("Running mainloop\n");
+    g_main_loop_run (loop);
+  });
 }
 
 void
@@ -108,6 +108,9 @@ media::Sender::stop ()
   g_main_loop_quit (loop);
   g_print ("stopping playback\n");
   gst_element_set_state (pipeline, GST_STATE_NULL);
+
+  thread->join();
+  thread.reset();
 }
 
 void
