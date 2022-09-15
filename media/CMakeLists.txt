@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.22.0)
+cmake_minimum_required(VERSION 3.21.0)
 
 project(sndrcv VERSION 0.1.0 DESCRIPTION "SyncedGroups library using gstreamer")
 
