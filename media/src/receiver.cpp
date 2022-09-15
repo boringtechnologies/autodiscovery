@@ -79,7 +79,7 @@ media::Receiver::Receiver(const std::string &id, MediaType type,
                      depayloader);
     GstPad *capsf_pad = gst_element_get_static_pad(capsf, "src");
     GstPad *recv_rtp_sink_pad =
-        gst_element_request_pad_simple(rtpbin, "recv_rtp_sink_%u");
+        gst_element_get_request_pad(rtpbin, "recv_rtp_sink_%u");
 
     bus = gst_pipeline_get_bus(GST_PIPELINE(pipeline));
     bus_watch_id = gst_bus_add_watch(bus, bus_callback, loop);

@@ -139,7 +139,7 @@ void media::Sender::addReceiver(const std::string &id,
     gst_bin_add_many(GST_BIN(bin), queue, rtpbin, udpsink, nullptr);
 
     GstPad *rtp_send_sinkpad =
-        gst_element_request_pad_simple(rtpbin, "send_rtp_sink_%u");
+        gst_element_get_request_pad(rtpbin, "send_rtp_sink_%u");
     GstPad *queue_src_pad = gst_element_get_static_pad(queue, "src");
 
     if (GST_PAD_LINK_OK != gst_pad_link(queue_src_pad, rtp_send_sinkpad))
