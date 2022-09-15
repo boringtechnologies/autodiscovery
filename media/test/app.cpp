@@ -50,7 +50,7 @@ void ui(media::Sender &sndr) {
 
 int main(int argc, char **argv) {
     media::ClockInfo clock;
-    media::MediaType type;
+    media::MediaType type = media::MediaType::Video;
     media::CaptureDevice dev;
 
     if (argc < 2) {
