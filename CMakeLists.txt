@@ -8,7 +8,7 @@ project(grpc-roc LANGUAGES CXX)
 include(cmake/common.cmake)
 
 
-if(APPLE)
+if(NOT APPLE)
     set(BUILD_SHARED_LIBS OFF)
     set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++ -static")
 endif()
