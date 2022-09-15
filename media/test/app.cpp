@@ -75,6 +75,10 @@ int main(int argc, char **argv) {
         }
     }
 
+    if (argc == 4) {
+        dev.name = std::string(argv[3]);
+    }
+
     char mode = argv[1][0];
     if (mode == 's') {
         media::Sender sndr("sender", type, dev, clock);

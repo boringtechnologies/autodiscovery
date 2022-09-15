@@ -41,11 +41,19 @@ static GstElement *get_audio_device(const media::CaptureDevice &device) {
 }
 
 static GstElement *get_video_device(const media::CaptureDevice &device) {
+    GstElement *source;
+
 #if defined(__linux__)
-    return gst_element_factory_make("v4l2src", "publisher-videosrc");
+    source = gst_element_factory_make("v4l2src", "publisher-videosrc");
+    if (!device.name.empty()) {
+        g_object_set(G_OBJECT(source), "device", device.name.c_str(), nullptr);
+    }
+
 #elif defined(__APPLE__)
-    return gst_element_factory_make("avfvideosrc", "publisher-audiosrc");
+    source = gst_element_factory_make("avfvideosrc", "publisher-audiosrc");
 #endif
+
+    return source;
 }
 
 media::Sender::Sender(const std::string &id, media::MediaType type,
@@ -90,10 +98,6 @@ media::Sender::Sender(const std::string &id, media::MediaType type,
     tee = gst_element_factory_make("tee", "publisher-tee");
     queue = gst_element_factory_make("queue", "publisher-queue");
     fakesink = gst_element_factory_make("fakesink", "fakesink");
-
-    if (!device.name.empty()) {
-        g_object_set(G_OBJECT(source), "device", device.name.c_str(), nullptr);
-    }
 
     bus = gst_pipeline_get_bus(GST_PIPELINE(pipeline));
     bus_watch_id = gst_bus_add_watch(bus, bus_callback, loop);
