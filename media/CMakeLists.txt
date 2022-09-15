@@ -29,6 +29,8 @@ add_executable(${PROJECT_NAME}
 
 target_include_directories(${PROJECT_NAME} PRIVATE
 		${GST_INCLUDE_DIRS})
+target_link_directories(${PROJECT_NAME} PRIVATE
+	${GST_LIBRARY_DIRS})
 target_link_libraries(${PROJECT_NAME}
 	${GST_LIBRARIES}
 	${CMAKE_THREAD_LIBS_INIT})
