@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_EXPORT_COMPILE_COMMANDS True)
 
+find_package(Threads REQUIRED)
 find_package(PkgConfig REQUIRED)
 
 pkg_check_modules(GST REQUIRED
@@ -28,4 +29,6 @@ add_executable(${PROJECT_NAME}
 
 target_include_directories(${PROJECT_NAME} PRIVATE
 		${GST_INCLUDE_DIRS})
-target_link_libraries(${PROJECT_NAME} ${GST_LIBRARIES})
+target_link_libraries(${PROJECT_NAME}
+	${GST_LIBRARIES}
+	${CMAKE_THREAD_LIBS_INIT})
