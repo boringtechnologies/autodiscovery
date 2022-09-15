@@ -52,7 +52,7 @@ struct ReceiverInfo {
 
 struct CaptureDevice {
     // XXX: This can be extended for other source types
-    std::string device;
+    std::string name;
 };
 
 class Sender {

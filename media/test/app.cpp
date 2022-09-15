@@ -14,8 +14,7 @@
     a - Audio\n\
     v - Video\n\
     (default: v)\n\n\
-    device (optional):\n\
-    (default: /dev/video0)\n"
+    device (optional):\n"
 
 void ui(media::Sender &sndr) {
     while (true) {
@@ -51,15 +50,16 @@ void ui(media::Sender &sndr) {
 
 int main(int argc, char **argv) {
     media::ClockInfo clock;
-    media::MediaType type = media::MediaType::Video;
-    media::CaptureDevice dev = {argc > 3 ? argv[3] : "/dev/video0"};
+    media::MediaType type;
+    media::CaptureDevice dev;
+
     if (argc < 2) {
         std::cerr << "Usage:" << std::endl;
         std::cerr << argv[0] << APP_USAGE << std::endl;
         exit(-1);
     }
-    char mode = argv[1][0];
-    if (argc > 3) {
+
+    if (argc > 2) {
         switch (argv[2][0]) {
             case 'v':
                 type = media::MediaType::Video;
@@ -74,6 +74,8 @@ int main(int argc, char **argv) {
                 std::exit(-1);
         }
     }
+
+    char mode = argv[1][0];
     if (mode == 's') {
         media::Sender sndr("sender", type, dev, clock);
         sndr.start();

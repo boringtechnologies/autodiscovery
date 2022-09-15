@@ -75,7 +75,9 @@ media::Sender::Sender(const std::string &id, media::MediaType type,
     queue = gst_element_factory_make("queue", "publisher-queue");
     fakesink = gst_element_factory_make("fakesink", "fakesink");
 
-    g_object_set(G_OBJECT(source), "device", device.device.c_str(), nullptr);
+    if (!device.name.empty()) {
+        g_object_set(G_OBJECT(source), "device", device.name.c_str(), nullptr);
+    }
 
     bus = gst_pipeline_get_bus(GST_PIPELINE(pipeline));
     bus_watch_id = gst_bus_add_watch(bus, bus_callback, loop);
