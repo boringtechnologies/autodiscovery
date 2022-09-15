@@ -32,6 +32,22 @@ static gboolean bus_callback(GstBus *bus, GstMessage *msg, gpointer data) {
     return TRUE;
 }
 
+static GstElement *get_audio_device(const media::CaptureDevice &device) {
+#if defined(__linux__)
+    return gst_element_factory_make("pulsesrc", "publisher-audiosrc");
+#elif defined(__APPLE__)
+    return gst_element_factory_make("osxaudiosrc", "publisher-audiosrc");
+#endif
+}
+
+static GstElement *get_video_device(const media::CaptureDevice &device) {
+#if defined(__linux__)
+    return gst_element_factory_make("v4l2src", "publisher-videosrc");
+#elif defined(__APPLE__)
+    return gst_element_factory_make("avfvideosrc", "publisher-audiosrc");
+#endif
+}
+
 media::Sender::Sender(const std::string &id, media::MediaType type,
                       const media::CaptureDevice &device,
                       const media::ClockInfo &clock)
@@ -45,7 +61,7 @@ media::Sender::Sender(const std::string &id, media::MediaType type,
     pipeline = gst_pipeline_new(id.c_str());
 
     if (type == media::MediaType::Audio) {
-        source = gst_element_factory_make("pulsesrc", "publisher-audiosrc");
+        source = get_audio_device(device);
         conv = gst_element_factory_make("audioconvert", "conv");
         capsf = gst_element_factory_make("capsfilter", "capsf");
         g_object_set(capsf, "caps",
@@ -55,7 +71,7 @@ media::Sender::Sender(const std::string &id, media::MediaType type,
             gst_element_factory_make("rtpopuspay", "publisher-audiopayload");
         g_object_set(payloader, "pt", 97, NULL);
     } else if (type == media::MediaType::Video) {
-        source = gst_element_factory_make("v4l2src", "publisher-videosrc");
+        source = get_video_device(device);
         conv = gst_element_factory_make("videoconvert", "conv");
         capsf = gst_element_factory_make("capsfilter", "capsf");
         g_object_set(capsf, "caps",
