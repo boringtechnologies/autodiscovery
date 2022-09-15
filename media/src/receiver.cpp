@@ -49,7 +49,7 @@ media::Receiver::Receiver(const std::string &id, MediaType type,
                           std::chrono::duration<int> delay)
     : thread(nullptr) {
     GstBus *bus;
-    GstElement *rtpbin, *udpsrc, *capsf, *depayloader, *decoder, *sink;
+    GstElement *rtpbin, *udpsrc, *depayloader, *decoder, *sink;
     gst_init(nullptr, nullptr);
 
     loop = g_main_loop_new(nullptr, FALSE);
@@ -60,24 +60,32 @@ media::Receiver::Receiver(const std::string &id, MediaType type,
     g_object_set(udpsrc, "port", receiver.port, NULL);
     if (!receiver.address.empty())
         g_object_set(udpsrc, "address", receiver.address.c_str(), NULL);
-    capsf = gst_element_factory_make("capsfilter", "receiver-capsf");
     rtpbin = gst_element_factory_make("rtpbin", "receiver-rtpbin");
     if (type == media::MediaType::Audio) {
-        // TODO add audio pipeline elements
+        depayloader =
+            gst_element_factory_make("rtpopusdepay", "receiver-depay");
+        decoder = gst_element_factory_make("opusdec", "receiver-dec");
+        sink = gst_element_factory_make("autoaudiosink", "receiver-sink");
+        g_object_set(
+            udpsrc, "caps",
+            gst_caps_from_string("application/"
+                                 "x-rtp,media=(string)audio,clock-rate=(int)"
+                                 "48000,encoding-name=(string)OPUS,payload=97"),
+            nullptr);
     } else if (type == media::MediaType::Video) {
         depayloader = gst_element_factory_make("rtpvp8depay", "receiver-depay");
         decoder = gst_element_factory_make("vp8dec", "receiver-dec");
         sink = gst_element_factory_make("autovideosink", "receiver-sink");
         g_object_set(
-            capsf, "caps",
+            udpsrc, "caps",
             gst_caps_from_string("application/"
                                  "x-rtp,media=(string)video,clock-rate=(int)"
-                                 "90000,encoding-name=(string)VP8"),
+                                 "90000,encoding-name=(string)VP8,payload=101"),
             nullptr);
     }
     g_signal_connect(rtpbin, "pad-added", G_CALLBACK(rtpbin_pad_padded),
                      depayloader);
-    GstPad *capsf_pad = gst_element_get_static_pad(capsf, "src");
+    GstPad *src_pad = gst_element_get_static_pad(udpsrc, "src");
     GstPad *recv_rtp_sink_pad =
         gst_element_get_request_pad(rtpbin, "recv_rtp_sink_%u");
 
@@ -85,9 +93,9 @@ media::Receiver::Receiver(const std::string &id, MediaType type,
     bus_watch_id = gst_bus_add_watch(bus, bus_callback, loop);
     gst_object_unref(bus);
 
-    gst_bin_add_many(GST_BIN(pipeline), udpsrc, capsf, rtpbin, depayloader,
-                     decoder, sink, NULL);
-    gst_pad_link(capsf_pad, recv_rtp_sink_pad);
+    gst_bin_add_many(GST_BIN(pipeline), udpsrc, rtpbin, depayloader, decoder,
+                     sink, NULL);
+    gst_pad_link(src_pad, recv_rtp_sink_pad);
 
     // GstPad *recv_rtp_src_pad =
     //     gst_element_request_pad_simple(rtpbin, "recv_rtp_src_%u_%u_%u");
@@ -97,8 +105,6 @@ media::Receiver::Receiver(const std::string &id, MediaType type,
     //     g_printerr("Failed to link the rtpbin and depay\n");
     //     return;
     // }
-    if (!gst_element_link(udpsrc, capsf))
-        g_printerr("Failed to link udpsrc and capsf\n");
     if (!gst_element_link_many(depayloader, decoder, sink, NULL)) {
         g_printerr("Failed to link the elements\n");
         return;

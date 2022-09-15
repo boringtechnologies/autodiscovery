@@ -47,9 +47,13 @@ media::Sender::Sender(const std::string &id, media::MediaType type,
     if (type == media::MediaType::Audio) {
         source = gst_element_factory_make("pulsesrc", "publisher-audiosrc");
         conv = gst_element_factory_make("audioconvert", "conv");
+        capsf = gst_element_factory_make("capsfilter", "capsf");
+        g_object_set(capsf, "caps",
+                     gst_caps_from_string("audio/x-raw,rate=48000"), nullptr);
         encoder = gst_element_factory_make("opusenc", "publisher-audioenc");
         payloader =
             gst_element_factory_make("rtpopuspay", "publisher-audiopayload");
+        g_object_set(payloader, "pt", 97, NULL);
     } else if (type == media::MediaType::Video) {
         source = gst_element_factory_make("v4l2src", "publisher-videosrc");
         conv = gst_element_factory_make("videoconvert", "conv");
@@ -63,6 +67,7 @@ media::Sender::Sender(const std::string &id, media::MediaType type,
         g_object_set(encoder, "deadline", 1, "keyframe-max-dist", 300, nullptr);
         payloader =
             gst_element_factory_make("rtpvp8pay", "publisher-videopayload");
+        g_object_set(payloader, "pt", 101, NULL);
     }
     // TODO: Add a muxer when we want both audio and video from a single
     // publisher
