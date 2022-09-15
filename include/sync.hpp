@@ -107,6 +107,12 @@ struct PlaybackDevice {
 };
 
 class Receiver {
+   private:
+    std::unique_ptr<std::thread> thread;
+    GMainLoop *loop;
+    guint bus_watch_id;
+    GstElement *pipeline, *tee;
+
    public:
     // The constructor takes:
     //   * An instance id, for easier debugging

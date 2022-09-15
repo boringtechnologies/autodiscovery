@@ -3,8 +3,19 @@
 #include <sync.hpp>
 #include <thread>
 
-#define USER_OPTS \
-    "1. None\n2. Stop Sender\n3. Add Receiver\n4. Remove Receiver\n\n"
+#define USER_OPTS "1. Add Receiver\n2. Remove Receiver\n3. Stop Sender\n\n"
+
+#define APP_USAGE \
+    " <mode> <options> <device>\n\
+    mode:\n\
+    s - Sender\n\
+    r - Receiver\n\n\
+    type (optional):\n\
+    a - Audio\n\
+    v - Video\n\
+    (default: v)\n\n\
+    device (optional):\n\
+    (default: /dev/video0)\n"
 
 void ui(media::Sender &sndr) {
     while (true) {
@@ -13,10 +24,7 @@ void ui(media::Sender &sndr) {
         std::cout << USER_OPTS << std::endl;
         std::cin >> input;
         switch (input) {
-            case 2:
-                sndr.stop();
-                return;
-            case 3: {
+            case 1: {
                 std::string host;
                 uint16_t port;
                 std::string rcvr_id;
@@ -25,15 +33,18 @@ void ui(media::Sender &sndr) {
                 media::ReceiverInfo rcvr = {host, port};
                 sndr.addReceiver(rcvr_id, rcvr);
             } break;
-            case 4: {
+            case 2: {
                 std::string rcvr_id;
                 std::cout << "provide rcvrid" << std::endl;
                 std::cin >> rcvr_id;
                 sndr.removeReceiver(rcvr_id);
             } break;
+            case 3:
+                sndr.stop();
+                return;
             default:
                 std::cout << "invalid command" << std::endl;
-                break;
+                continue;
         }
     }
 }
@@ -41,10 +52,15 @@ void ui(media::Sender &sndr) {
 int main(int argc, char **argv) {
     media::ClockInfo clock;
     media::MediaType type = media::MediaType::Video;
-    media::CaptureDevice dev = {argc > 2 ? argv[2] : "/dev/video0"};
-
-    if (argc > 2) {
-        switch (argv[1][0]) {
+    media::CaptureDevice dev = {argc > 3 ? argv[3] : "/dev/video0"};
+    if (argc < 2) {
+        std::cerr << "Usage:" << std::endl;
+        std::cerr << argv[0] << APP_USAGE << std::endl;
+        exit(-1);
+    }
+    char mode = argv[1][0];
+    if (argc > 3) {
+        switch (argv[2][0]) {
             case 'v':
                 type = media::MediaType::Video;
                 break;
@@ -58,12 +74,32 @@ int main(int argc, char **argv) {
                 std::exit(-1);
         }
     }
+    if (mode == 's') {
+        media::Sender sndr("sender", type, dev, clock);
+        sndr.start();
 
-    media::Sender sndr("first", media::MediaType::Video, dev, clock);
-    sndr.start();
+        std::thread cli(ui, std::ref(sndr));
+        cli.join();
+    } else if (mode == 'r') {
+        media::ReceiverInfo rcvr_info;
+        media::PlaybackDevice dev;
+        media::ClockInfo clock;
+        std::chrono::duration<int> delay;
 
-    std::thread cli(ui, std::ref(sndr));
+        std::cout << "Using default address 0.0.0.0. please provide udp port "
+                  << std::endl;
+        std::cin >> rcvr_info.port;
 
-    cli.join();
+        media::Receiver recvr("receiver", type, rcvr_info, dev, clock, delay);
+        recvr.start();
+
+        char key;
+        do {
+            std::cout << "Press 'q' to quit" << std::endl;
+            std::cin >> key;
+        } while (key != 'q');
+
+        recvr.stop();
+    }
     std::cout << "exiting..";
 }

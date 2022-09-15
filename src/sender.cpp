@@ -55,11 +55,12 @@ media::Sender::Sender(const std::string &id, media::MediaType type,
         conv = gst_element_factory_make("videoconvert", "conv");
         capsf = gst_element_factory_make("capsfilter", "capsf");
         g_object_set(capsf, "caps",
-                     gst_caps_from_string("video/x-raw,framerate=30/1"), NULL);
+                     gst_caps_from_string("video/x-raw,framerate=30/1"),
+                     nullptr);
         encoder = gst_element_factory_make("vp8enc", "publisher-videoenc");
         // Generates a keyframe every 10s, we can drop that part when we wire
         // up RTCP feedback
-        g_object_set(encoder, "deadline", 1, "keyframe-max-dist", 300, NULL);
+        g_object_set(encoder, "deadline", 1, "keyframe-max-dist", 300, nullptr);
         payloader =
             gst_element_factory_make("rtpvp8pay", "publisher-videopayload");
     }
@@ -114,13 +115,13 @@ void media::Sender::stop() {
 void media::Sender::addReceiver(const std::string &id,
                                 const ReceiverInfo &receiver) {
     GstElement *bin = gst_bin_get_by_name(GST_BIN(pipeline), id.c_str());
-    if (bin != NULL) {
+    if (bin != nullptr) {
         g_printerr("Receiver id %s already exists\n", id.c_str());
         return;
     }
 
     bin = gst_bin_new(id.c_str());
-    g_assert(bin != NULL);
+    g_assert(bin != nullptr);
 
     GstElement *rtpbin = gst_element_factory_make("rtpbin", "publisher-rtpbin");
     GstElement *queue = gst_element_factory_make("queue", "publisher-q");
@@ -144,7 +145,7 @@ void media::Sender::addReceiver(const std::string &id,
     if (GST_PAD_LINK_OK != gst_pad_link(queue_src_pad, rtp_send_sinkpad))
         g_print("failed to link queue_src_pad and rtp_send_sinkpad");
 
-    if (!gst_element_link_many(rtpbin, udpsink, NULL))
+    if (!gst_element_link_many(rtpbin, udpsink, nullptr))
         g_print("failed to link rtpbin and udpsink");
 
     gst_bin_add(GST_BIN(pipeline), bin);
@@ -169,7 +170,7 @@ gboolean set_to_null(gpointer data) {
     GstElement *pipeline = (GstElement *)gst_element_get_parent(bin);
     gst_bin_remove(GST_BIN(pipeline), bin);
 
-    // TODO unref bin
+    gst_object_unref(bin);
     return FALSE;
 }
 
@@ -190,7 +191,7 @@ GstPadProbeReturn probe_call_back(GstPad *pad, GstPadProbeInfo *info,
 
 void media::Sender::removeReceiver(const std::string &id) {
     GstElement *bin = gst_bin_get_by_name(GST_BIN(pipeline), id.c_str());
-    if (bin == NULL) {
+    if (bin == nullptr) {
         g_printerr("No such receiver in the current pipeline %s\n", id.c_str());
         return;
     }
@@ -199,7 +200,6 @@ void media::Sender::removeReceiver(const std::string &id) {
 
     GstPad *tee_src_pad = gst_pad_get_peer(bin_ghost_pad);
 
-    // TODO bitwise OR works only we do typecast. Know why
     gst_pad_add_probe(tee_src_pad, GST_PAD_PROBE_TYPE_IDLE, probe_call_back,
                       bin, nullptr);
 
