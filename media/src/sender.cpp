@@ -1,7 +1,9 @@
 #include <iterator>
 #include <memory>
-#include <sync.hpp>
 #include <thread>
+
+#include <sync.hpp>
+#include "internal.hpp"
 
 static gboolean bus_callback(GstBus *bus, GstMessage *msg, gpointer data) {
     GMainLoop *loop = (GMainLoop *)data;
@@ -33,24 +35,28 @@ static gboolean bus_callback(GstBus *bus, GstMessage *msg, gpointer data) {
 }
 
 static GstElement *get_audio_device(const media::CaptureDevice &device) {
+    GstElement *source;
+
 #if defined(__linux__)
-    return gst_element_factory_make("pulsesrc", "publisher-audiosrc");
+    MAKE_ELEMENT(source, "pulsesrc", "publisher-audiosrc");
 #elif defined(__APPLE__)
-    return gst_element_factory_make("osxaudiosrc", "publisher-audiosrc");
+    MAKE_ELEMENT(source, "osxaudiosrc", "publisher-audiosrc");
 #endif
+
+    return source;
 }
 
 static GstElement *get_video_device(const media::CaptureDevice &device) {
     GstElement *source;
 
 #if defined(__linux__)
-    source = gst_element_factory_make("v4l2src", "publisher-videosrc");
+    MAKE_ELEMENT(source, "v4l2src", "publisher-videosrc");
     if (!device.name.empty()) {
         g_object_set(G_OBJECT(source), "device", device.name.c_str(), nullptr);
     }
 
 #elif defined(__APPLE__)
-    source = gst_element_factory_make("avfvideosrc", "publisher-audiosrc");
+    MAKE_ELEMENT(source, "avfvideosrc", "publisher-audiosrc");
 #endif
 
     return source;
@@ -70,22 +76,22 @@ media::Sender::Sender(const std::string &id, media::MediaType type,
 
     if (type == media::MediaType::Audio) {
         source = get_audio_device(device);
-        conv = gst_element_factory_make("audioconvert", "conv");
-        capsf = gst_element_factory_make("capsfilter", "capsf");
+        MAKE_ELEMENT(conv, "audioconvert", "conv");
+        MAKE_ELEMENT(capsf, "capsfilter", "capsf");
         g_object_set(capsf, "caps",
                      gst_caps_from_string("audio/x-raw,rate=48000"), nullptr);
-        encoder = gst_element_factory_make("opusenc", "publisher-audioenc");
+        MAKE_ELEMENT(encoder, "opusenc", "publisher-audioenc");
         payloader =
             gst_element_factory_make("rtpopuspay", "publisher-audiopayload");
         g_object_set(payloader, "pt", 97, NULL);
     } else if (type == media::MediaType::Video) {
         source = get_video_device(device);
-        conv = gst_element_factory_make("videoconvert", "conv");
-        capsf = gst_element_factory_make("capsfilter", "capsf");
+        MAKE_ELEMENT(conv, "videoconvert", "conv");
+        MAKE_ELEMENT(capsf, "capsfilter", "capsf");
         g_object_set(capsf, "caps",
                      gst_caps_from_string("video/x-raw,framerate=30/1"),
                      nullptr);
-        encoder = gst_element_factory_make("vp8enc", "publisher-videoenc");
+        MAKE_ELEMENT(encoder, "vp8enc", "publisher-videoenc");
         // Generates a keyframe every 10s, we can drop that part when we wire
         // up RTCP feedback
         g_object_set(encoder, "deadline", 1, "keyframe-max-dist", 300, nullptr);
@@ -95,9 +101,9 @@ media::Sender::Sender(const std::string &id, media::MediaType type,
     }
     // TODO: Add a muxer when we want both audio and video from a single
     // publisher
-    tee = gst_element_factory_make("tee", "publisher-tee");
-    queue = gst_element_factory_make("queue", "publisher-queue");
-    fakesink = gst_element_factory_make("fakesink", "fakesink");
+    MAKE_ELEMENT(tee, "tee", "publisher-tee");
+    MAKE_ELEMENT(queue, "queue", "publisher-queue");
+    MAKE_ELEMENT(fakesink, "fakesink", "fakesink");
 
     bus = gst_pipeline_get_bus(GST_PIPELINE(pipeline));
     bus_watch_id = gst_bus_add_watch(bus, bus_callback, loop);
@@ -141,7 +147,9 @@ void media::Sender::stop() {
 
 void media::Sender::addReceiver(const std::string &id,
                                 const ReceiverInfo &receiver) {
+    GstElement *udpsink, *rtpbin, *queue;
     GstElement *bin = gst_bin_get_by_name(GST_BIN(pipeline), id.c_str());
+
     if (bin != nullptr) {
         g_printerr("Receiver id %s already exists\n", id.c_str());
         return;
@@ -150,10 +158,9 @@ void media::Sender::addReceiver(const std::string &id,
     bin = gst_bin_new(id.c_str());
     g_assert(bin != nullptr);
 
-    GstElement *rtpbin = gst_element_factory_make("rtpbin", "publisher-rtpbin");
-    GstElement *queue = gst_element_factory_make("queue", "publisher-q");
-    GstElement *udpsink =
-        gst_element_factory_make("udpsink", "publisher-udpsink");
+    MAKE_ELEMENT(rtpbin, "rtpbin", "publisher-rtpbin");
+    MAKE_ELEMENT(queue, "queue", "publisher-q");
+    MAKE_ELEMENT(udpsink, "udpsink", "publisher-udpsink");
 
     if (!bin || !queue || !rtpbin || !udpsink) {
         g_printerr("failed to create elements in addReceiver");

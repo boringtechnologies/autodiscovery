@@ -1,4 +1,5 @@
 #include <sync.hpp>
+#include "internal.hpp"
 
 static gboolean bus_callback(GstBus *bus, GstMessage *msg, gpointer data) {
     GMainLoop *loop = (GMainLoop *)data;
@@ -56,16 +57,15 @@ media::Receiver::Receiver(const std::string &id, MediaType type,
 
     pipeline = gst_pipeline_new(id.c_str());
 
-    udpsrc = gst_element_factory_make("udpsrc", "receiver-udpsrc");
+    MAKE_ELEMENT(udpsrc, "udpsrc", "receiver-udpsrc");
     g_object_set(udpsrc, "port", receiver.port, NULL);
     if (!receiver.address.empty())
         g_object_set(udpsrc, "address", receiver.address.c_str(), NULL);
-    rtpbin = gst_element_factory_make("rtpbin", "receiver-rtpbin");
+    MAKE_ELEMENT(rtpbin, "rtpbin", "receiver-rtpbin");
     if (type == media::MediaType::Audio) {
-        depayloader =
-            gst_element_factory_make("rtpopusdepay", "receiver-depay");
-        decoder = gst_element_factory_make("opusdec", "receiver-dec");
-        sink = gst_element_factory_make("autoaudiosink", "receiver-sink");
+        MAKE_ELEMENT(depayloader, "rtpopusdepay", "receiver-depay");
+        MAKE_ELEMENT(decoder, "opusdec", "receiver-dec");
+        MAKE_ELEMENT(sink, "autoaudiosink", "receiver-sink");
         g_object_set(
             udpsrc, "caps",
             gst_caps_from_string("application/"
@@ -73,9 +73,9 @@ media::Receiver::Receiver(const std::string &id, MediaType type,
                                  "48000,encoding-name=(string)OPUS,payload=97"),
             nullptr);
     } else if (type == media::MediaType::Video) {
-        depayloader = gst_element_factory_make("rtpvp8depay", "receiver-depay");
-        decoder = gst_element_factory_make("vp8dec", "receiver-dec");
-        sink = gst_element_factory_make("autovideosink", "receiver-sink");
+        MAKE_ELEMENT(depayloader, "rtpvp8depay", "receiver-depay");
+        MAKE_ELEMENT(decoder, "vp8dec", "receiver-dec");
+        MAKE_ELEMENT(sink, "autovideosink", "receiver-sink");
         g_object_set(
             udpsrc, "caps",
             gst_caps_from_string("application/"
