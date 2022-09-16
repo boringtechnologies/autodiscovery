@@ -1,8 +1,11 @@
+#include <gst/app/app.h>
+
 #include <iterator>
 #include <memory>
 #include <sync.hpp>
 #include <thread>
 
+#include "gst/app/gstappsink.h"
 #include "internal.hpp"
 
 static gboolean bus_callback(GstBus *bus, GstMessage *msg, gpointer data) {
@@ -65,7 +68,7 @@ static GstElement *get_video_device(const media::CaptureDevice &device) {
 media::Sender::Sender(const std::string &id, media::MediaType type,
                       const media::CaptureDevice &device,
                       const media::ClockInfo &clock)
-    : thread(nullptr) {
+    : thread(nullptr), write_cbs() {
     GstBus *bus;
     GstElement *source, *conv, *rate, *capsf, *encoder, *payloader, *queue,
         *fakesink;
@@ -148,9 +151,46 @@ void media::Sender::stop() {
     thread.reset();
 }
 
+struct WriteCallbackCtx {
+    media::Sender *sender;
+    std::string id;
+};
+
+static void write_cb_ctx_free(gpointer data) {
+    WriteCallbackCtx *ctx = static_cast<WriteCallbackCtx *>(data);
+    delete ctx;
+}
+
+static GstFlowReturn new_sample(GstAppSink *sink, gpointer userdata) {
+    GstSample *sample;
+    WriteCallbackCtx *ctx = static_cast<WriteCallbackCtx *>(userdata);
+    media::WriteCallback &write_cb = ctx->sender->write_cbs[ctx->id];
+
+    /* Retrieve the buffer */
+    sample = gst_app_sink_pull_sample(sink);
+    if (sample) {
+        /* The only thing we do in this example is print a * to indicate a
+         * received buffer */
+        GstBuffer *buf = gst_sample_get_buffer(sample);
+        GstMapInfo info;
+        gst_buffer_map(buf, &info, GST_MAP_READ);
+
+        if (write_cb) {
+            write_cb((const uint8_t *)info.data, info.size);
+        }
+
+        gst_buffer_unmap(buf, &info);
+
+        gst_sample_unref(sample);
+        return GST_FLOW_OK;
+    }
+
+    return GST_FLOW_ERROR;
+}
+
 void media::Sender::addReceiver(const std::string &id,
-                                const ReceiverInfo &receiver) {
-    GstElement *udpsink, *rtpbin, *queue;
+                                media::WriteCallback write_cb) {
+    GstElement *appsink, *rtpbin, *queue;
     GstElement *bin = gst_bin_get_by_name(GST_BIN(pipeline), id.c_str());
 
     if (bin != nullptr) {
@@ -163,17 +203,27 @@ void media::Sender::addReceiver(const std::string &id,
 
     MAKE_ELEMENT(rtpbin, "rtpbin", "publisher-rtpbin");
     MAKE_ELEMENT(queue, "queue", "publisher-q");
-    MAKE_ELEMENT(udpsink, "udpsink", "publisher-udpsink");
+    MAKE_ELEMENT(appsink, "appsink", "publisher-appsink");
 
-    if (!bin || !queue || !rtpbin || !udpsink) {
+    if (!bin || !queue || !rtpbin || !appsink) {
         g_printerr("failed to create elements in addReceiver");
         return;
     }
 
-    g_object_set(G_OBJECT(udpsink), "host", receiver.address.c_str(), "port",
-                 receiver.port, nullptr);
+    // We need to make sure the callback lives through the lifetime of the
+    // receiver
+    write_cbs[id] = write_cb;
 
-    gst_bin_add_many(GST_BIN(bin), queue, rtpbin, udpsink, nullptr);
+    WriteCallbackCtx *ctx = g_new0(WriteCallbackCtx, 1);
+    ctx->sender = this;
+    ctx->id = id;
+
+    GstAppSinkCallbacks callbacks = { 0 };
+    callbacks.new_sample = new_sample;
+    gst_app_sink_set_callbacks(GST_APP_SINK(appsink), &callbacks, ctx, write_cb_ctx_free);
+    g_object_set(appsink, "emit-signals", FALSE, NULL);
+
+    gst_bin_add_many(GST_BIN(bin), queue, rtpbin, appsink, nullptr);
 
     GstPad *rtp_send_sinkpad =
         gst_element_get_request_pad(rtpbin, "send_rtp_sink_%u");
@@ -182,8 +232,8 @@ void media::Sender::addReceiver(const std::string &id,
     if (GST_PAD_LINK_OK != gst_pad_link(queue_src_pad, rtp_send_sinkpad))
         g_print("failed to link queue_src_pad and rtp_send_sinkpad");
 
-    if (!gst_element_link_many(rtpbin, udpsink, nullptr))
-        g_print("failed to link rtpbin and udpsink");
+    if (!gst_element_link_many(rtpbin, appsink, nullptr))
+        g_print("failed to link rtpbin and appsink");
 
     gst_bin_add(GST_BIN(pipeline), bin);
     gst_element_sync_state_with_parent(bin);
@@ -198,22 +248,31 @@ void media::Sender::addReceiver(const std::string &id,
                               "pipeline");
 }
 
-gboolean set_to_null(gpointer data) {
-    GstElement *bin = (GstElement *)data;
+struct RemoveCallbackCtx {
+    media::Sender *sender;
+    std::string id;
+    GstElement *bin;
+};
 
-    GstStateChangeReturn ret = gst_element_set_state(bin, GST_STATE_NULL);
+gboolean set_to_null(gpointer data) {
+    RemoveCallbackCtx *ctx = (RemoveCallbackCtx *)data;
+
+    GstStateChangeReturn ret = gst_element_set_state(ctx->bin, GST_STATE_NULL);
     g_print("state change return %d\n", ret);
 
-    GstElement *pipeline = (GstElement *)gst_element_get_parent(bin);
-    gst_bin_remove(GST_BIN(pipeline), bin);
+    GstElement *pipeline = (GstElement *)gst_element_get_parent(ctx->bin);
+    gst_bin_remove(GST_BIN(pipeline), ctx->bin);
 
-    gst_object_unref(bin);
+    gst_object_unref(ctx->bin);
+    ctx->sender->write_cbs.erase(ctx->id);
+    delete(ctx);
+
     return FALSE;
 }
 
 GstPadProbeReturn probe_call_back(GstPad *pad, GstPadProbeInfo *info,
                                   gpointer user_data) {
-    GstElement *bin = (GstElement *)user_data;
+    RemoveCallbackCtx *ctx = (RemoveCallbackCtx *)user_data;
     GstPad *peer_pad = gst_pad_get_peer(pad);
 
     if (!gst_pad_unlink(pad, peer_pad)) {
@@ -221,7 +280,8 @@ GstPadProbeReturn probe_call_back(GstPad *pad, GstPadProbeInfo *info,
     }
     gst_object_unref(peer_pad);
 
-    g_idle_add(set_to_null, bin);
+    // FIXME: this will NOT be scheduled on our internal mainloop
+    g_idle_add(set_to_null, ctx);
 
     return GST_PAD_PROBE_REMOVE;
 }
@@ -233,12 +293,17 @@ void media::Sender::removeReceiver(const std::string &id) {
         return;
     }
 
+    RemoveCallbackCtx *ctx = new RemoveCallbackCtx();
+    ctx->sender = this;
+    ctx->id = id;
+    ctx->bin = bin;
+
     GstPad *bin_ghost_pad = gst_element_get_static_pad(bin, "sink");
 
     GstPad *tee_src_pad = gst_pad_get_peer(bin_ghost_pad);
 
     gst_pad_add_probe(tee_src_pad, GST_PAD_PROBE_TYPE_IDLE, probe_call_back,
-                      bin, nullptr);
+                      ctx, nullptr);
 
     gst_object_unref(bin_ghost_pad);
     gst_object_unref(tee_src_pad);

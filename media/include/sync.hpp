@@ -5,6 +5,8 @@
 
 #include <chrono>
 #include <cstdint>
+#include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <thread>
@@ -31,6 +33,10 @@ enum MediaType {
     Video,
 };
 
+// typedef for the callback fn set by the application, will be called in the
+// appsink's context after pull-sample
+typedef std::function<void(const uint8_t *, size_t len)> WriteCallback;
+
 // Common clock information for all receivers
 struct ClockInfo {
     // XXX: What clock type should we use? GstNetClock or NTP? Do we want to
@@ -43,11 +49,6 @@ struct SenderInfo {
     // XXX: To be fleshed out, but this will contain any information we want to
     // publish to receivers (such as format information) so they can initialise
     // themselves for the data they will need to decode/render.
-};
-
-struct ReceiverInfo {
-    std::string address;
-    uint16_t port;
 };
 
 struct CaptureDevice {
@@ -95,9 +96,12 @@ class Sender {
     //
     // XXX: We might choose to mux RTCP from the get-go so we don't have to
     // reserve more than one port at a time, which should make ICE easier.
-    void addReceiver(const std::string &id, const ReceiverInfo &receiver);
+    void addReceiver(const std::string &id, WriteCallback cb);
 
     void removeReceiver(const std::string &id);
+
+    // FIXME: Can we make this private?
+    std::map<std::string, WriteCallback> write_cbs;
 };
 
 struct PlaybackDevice {
@@ -111,7 +115,7 @@ class Receiver {
     std::unique_ptr<std::thread> thread;
     GMainLoop *loop;
     guint bus_watch_id;
-    GstElement *pipeline, *tee;
+    GstElement *pipeline, *appsrc;
 
    public:
     // The constructor takes:
@@ -126,8 +130,8 @@ class Receiver {
     //
     // XXX: If a Sender sends audio and video, this API will need to change too.
     Receiver(const std::string &id, MediaType type,
-             const ReceiverInfo &receiver, const PlaybackDevice &device,
-             const ClockInfo &clock, std::chrono::duration<int> delay);
+             const PlaybackDevice &device, const ClockInfo &clock,
+             std::chrono::duration<int> delay);
 
     // Just tear everything down
     ~Receiver();
@@ -140,6 +144,11 @@ class Receiver {
 
     // Shut down reading media from senders.
     void stop();
+
+    // Push the data to the appsrc
+    // returns TRUE is push is successful
+    // returns FALSE in case of an error
+    bool push(const uint8_t *payload, size_t len);
 };
 }  // namespace media
 
