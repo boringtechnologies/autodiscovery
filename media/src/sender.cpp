@@ -1,8 +1,8 @@
 #include <iterator>
 #include <memory>
+#include <sync.hpp>
 #include <thread>
 
-#include <sync.hpp>
 #include "internal.hpp"
 
 static gboolean bus_callback(GstBus *bus, GstMessage *msg, gpointer data) {
@@ -67,7 +67,8 @@ media::Sender::Sender(const std::string &id, media::MediaType type,
                       const media::ClockInfo &clock)
     : thread(nullptr) {
     GstBus *bus;
-    GstElement *source, *conv, *capsf, *encoder, *payloader, *queue, *fakesink;
+    GstElement *source, *conv, *rate, *capsf, *encoder, *payloader, *queue,
+        *fakesink;
     gst_init(nullptr, nullptr);
 
     loop = g_main_loop_new(nullptr, FALSE);
@@ -77,6 +78,7 @@ media::Sender::Sender(const std::string &id, media::MediaType type,
     if (type == media::MediaType::Audio) {
         source = get_audio_device(device);
         MAKE_ELEMENT(conv, "audioconvert", "conv");
+        MAKE_ELEMENT(rate, "audioresample", "rate");
         MAKE_ELEMENT(capsf, "capsfilter", "capsf");
         g_object_set(capsf, "caps",
                      gst_caps_from_string("audio/x-raw,rate=48000"), nullptr);
@@ -87,6 +89,7 @@ media::Sender::Sender(const std::string &id, media::MediaType type,
     } else if (type == media::MediaType::Video) {
         source = get_video_device(device);
         MAKE_ELEMENT(conv, "videoconvert", "conv");
+        MAKE_ELEMENT(rate, "videorate", "rate");
         MAKE_ELEMENT(capsf, "capsfilter", "capsf");
         g_object_set(capsf, "caps",
                      gst_caps_from_string("video/x-raw,framerate=30/1"),
@@ -109,11 +112,11 @@ media::Sender::Sender(const std::string &id, media::MediaType type,
     bus_watch_id = gst_bus_add_watch(bus, bus_callback, loop);
     gst_object_unref(bus);
 
-    gst_bin_add_many(GST_BIN(pipeline), source, conv, capsf, encoder, payloader,
-                     tee, queue, fakesink, nullptr);
+    gst_bin_add_many(GST_BIN(pipeline), source, conv, rate, capsf, encoder,
+                     payloader, tee, queue, fakesink, nullptr);
 
-    if (!gst_element_link_many(source, conv, capsf, encoder, payloader, tee,
-                               queue, fakesink, nullptr)) {
+    if (!gst_element_link_many(source, conv, rate, capsf, encoder, payloader,
+                               tee, queue, fakesink, nullptr)) {
         g_printerr("failed to link the elements\n");
         return;
     }
