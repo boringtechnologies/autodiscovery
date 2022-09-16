@@ -143,26 +143,14 @@ void media::Receiver::stop() {
 bool media::Receiver::push(const uint8_t *payload, size_t len) {
     GstBuffer *buf;
     GstMapInfo info;
-    GstClock *clock;
-    GstClockTime timestamp, clock_time;
     GstFlowReturn ret;
-    clock = gst_element_get_clock(pipeline);
-    clock_time = gst_clock_get_time(clock);
-    gst_object_unref(clock);
 
-    timestamp = gst_element_get_base_time(pipeline);
-    if (timestamp > clock_time)
-        timestamp -= clock_time;
-    else
-        timestamp = 0;
 
     buf = gst_buffer_new_allocate(nullptr, len, nullptr);
     if (buf == nullptr) {
         g_printerr("Failed to allocate buffer\n");
         return false;
     }
-    GST_BUFFER_PTS(buf) = timestamp;
-    GST_BUFFER_DTS(buf) = timestamp;
 
     if (!gst_buffer_map(buf, &info, GST_MAP_WRITE)) {
         g_printerr("Failed to get buffer map\n");
