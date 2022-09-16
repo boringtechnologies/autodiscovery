@@ -3,12 +3,12 @@
 
 #include <iostream>
 
-#define MAKE_ELEMENT(var, factory, name)                              	\
-    do {                                                              	\
-        var = gst_element_factory_make(factory, name); 			\
-        if (!var) {                                             	\
-            std::cerr << "Failed to find element: " << std::endl;     	\
-        }                                                             	\
+#define MAKE_ELEMENT(var, factory, name)                                    \
+    do {                                                                    \
+        var = gst_element_factory_make(factory, name);                      \
+        if (!var) {                                                         \
+            std::cerr << "Failed to find element: " << name << std::endl;   \
+        }                                                                   \
     } while (0)
 
 #endif
