@@ -56,7 +56,7 @@ static GstElement *get_video_device(const media::CaptureDevice &device) {
     }
 
 #elif defined(__APPLE__)
-    MAKE_ELEMENT(source, "avfvideosrc", "publisher-audiosrc");
+    MAKE_ELEMENT(source, "avfvideosrc", "publisher-videosrc");
 #endif
 
     return source;

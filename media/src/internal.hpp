@@ -7,7 +7,7 @@
     do {                                                                    \
         var = gst_element_factory_make(factory, name);                      \
         if (!var) {                                                         \
-            std::cerr << "Failed to find element: " << name << std::endl;   \
+            std::cerr << "Failed to find element: " << factory << std::endl;\
         }                                                                   \
     } while (0)
 
