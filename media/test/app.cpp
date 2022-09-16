@@ -1,4 +1,5 @@
 #include <arpa/inet.h>
+#include <glib-unix.h>
 #include <sys/socket.h>
 
 #include <cstdint>
@@ -19,6 +20,13 @@
     v - Video\n\
     (default: v)\n\n\
     device (optional):\n"
+
+GMainLoop *loop;
+
+static gboolean break_handler(gpointer userdata) {
+    g_main_loop_quit(loop);
+    return TRUE;
+}
 
 static void write_callback(int sock, const std::string &addr,
                            const uint16_t port, const uint8_t *payload,
@@ -163,6 +171,7 @@ int main(int argc, char **argv) {
         media::PlaybackDevice dev;
         media::ClockInfo clock;
         std::chrono::duration<int> delay;
+        loop = g_main_loop_new(NULL, false);
 
         std::cout << "Using default address 0.0.0.0. please provide udp port "
                   << std::endl;
@@ -174,13 +183,11 @@ int main(int argc, char **argv) {
         recvr.start();
         std::thread th(receiver_thread, std::ref(recvr), addr, port);
 
-        char key;
-        do {
-            std::cout << "Press 'q' to quit" << std::endl;
-            std::cin >> key;
-        } while (key != 'q');
+        g_unix_signal_add(SIGINT, break_handler, loop);
+        std::cout << "Press 'Ctrl-C' to quit" << std::endl;
 
         // TODO cancel 'th' thread gracefully
+        g_main_loop_run(loop);
         recvr.stop();
     } else {
         std::cerr << "Invalid mode!!" << std::endl;
