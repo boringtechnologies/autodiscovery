@@ -23,16 +23,20 @@ typedef void (* on_recv_t)(juice_agent_t * agent, const char * data, size_t size
 class JuiceClient
 {
 public:
-    JuiceClient(on_state_changed_t onStateChangedHandler, on_candidate_t onCandidateHandler,
+    JuiceClient(const std::string & id,
+                on_state_changed_t onStateChangedHandler, on_candidate_t onCandidateHandler,
                 on_gathering_done_t onGatheringDoneHandler, on_recv_t onReceiveHandler);
     ~JuiceClient();
 
 public:
-    void init();
-    void connect(const std::string & sdpRemote);
+    bool init();
+    bool init(const std::string & sdp);
+    bool connect(const std::string & sdpRemote);
+    void disconnect();
     void addRemote(const std::string & sdpRemote);
     void sendMessage(const std::string & message);
 
+    std::string id() const;
     std::string sdp() const;
 
     juice_state_t state() const;

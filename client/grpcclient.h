@@ -21,7 +21,7 @@
 namespace rpcroc
 {
 
-typedef void (* on_message_handler_t)(const std::string & from, const std::string & msg);
+typedef void (* on_message_handler_t)(const std::string & from, const std::string & to, const std::string & msg);
 
 //******************************************************************************
 //******************************************************************************
@@ -29,11 +29,9 @@ class GRpcClient
 {
 public:
     GRpcClient(const std::string & id, const std::string & group,
-               const std::string & sdp,
                std::shared_ptr<grpc::Channel> channel)
         : m_id(id)
         , m_group(group)
-        , m_sdp(sdp)
         , m_stub(rpcroc::RpcRoc::NewStub(channel))
         , m_messageHandler(nullptr)
     {}
@@ -57,12 +55,16 @@ public:
     void unsubscribe();
     void sendMessage(const std::string & to, const std::string & msg);
 
+    bool p2pInit(const std::string & to, const std::string & sdp);
+    bool p2pAccept(const std::string & to, const std::string & sdp);
+    bool p2pCandidate(const std::string & to, const std::string & candidate);
+    bool p2pDisconnect(const std::string & to, const std::string & reason);
+
 private:
     std::unique_ptr<rpcroc::RpcRoc::Stub> m_stub;
 
     std::string m_id;
     std::string m_group;
-    std::string m_sdp;
 
     std::thread m_reader;
 

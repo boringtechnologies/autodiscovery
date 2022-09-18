@@ -48,6 +48,22 @@ class Service : public rpcroc::RpcRoc::CallbackService
                                            const rpcroc::Message * request,
                                            rpcroc::Empty * reply) override;
 
+    grpc::ServerUnaryReactor * p2pInit(grpc::CallbackServerContext * context,
+                                       const rpcroc::P2PInit * request,
+                                       rpcroc::Empty * reply) override;
+
+    grpc::ServerUnaryReactor * p2pAccept(grpc::CallbackServerContext * context,
+                                         const rpcroc::P2PAccept * request,
+                                         rpcroc::Empty * reply) override;
+
+    grpc::ServerUnaryReactor * p2pCandidate(grpc::CallbackServerContext * context,
+                                            const rpcroc::P2PCandidate * request,
+                                            rpcroc::Empty * reply) override;
+
+    grpc::ServerUnaryReactor * p2pDisconnect(grpc::CallbackServerContext * context,
+                                             const rpcroc::P2PDisconnect * request,
+                                             rpcroc::Empty * reply) override;
+
 public:
     // hack, need to review architecture
     void clientDisconnected(const std::string & id);
@@ -201,14 +217,8 @@ grpc::ServerUnaryReactor * Service::unsubscribe(grpc::CallbackServerContext * co
         return reactor;
     }
 
-//    Message m;
-//    m.set_from("core");
-//    m.set_to(request->id());
-//    m.set_msg("Bye!");
-
-//    MessageWriter * mw = m_writers.at(request->id());
-//    mw->StartWrite(&m);
-//    mw->Finish(grpc::Status::OK);
+    MessageWriter * mw = m_writers.at(request->id());
+    mw->Finish(grpc::Status::OK);
 
     m_peers.erase(request->id());
     m_writers.erase(request->id());
@@ -235,12 +245,12 @@ grpc::ServerUnaryReactor * Service::sendMessage(grpc::CallbackServerContext * co
         reactor->Finish(grpc::Status(grpc::StatusCode::NOT_FOUND, "Sender not found"));
         return reactor;
     }
-//    if ((from->second.type() & WRITER) == 0)
-//    {
-//        std::cout << "    sender not writer" << std::endl;
-//        reactor->Finish(grpc::Status(grpc::StatusCode::PERMISSION_DENIED, "Sender not writer"));
-//        return reactor;
-//    }
+    if ((from->second.type() & WRITER) == 0)
+    {
+        std::cout << "    sender not writer" << std::endl;
+        reactor->Finish(grpc::Status(grpc::StatusCode::PERMISSION_DENIED, "Sender not writer"));
+        return reactor;
+    }
 
     peers_map_t::iterator to = m_peers.find(request->to());
     if (to == m_peers.end())
@@ -250,14 +260,22 @@ grpc::ServerUnaryReactor * Service::sendMessage(grpc::CallbackServerContext * co
         reactor->Finish(grpc::Status(grpc::StatusCode::NOT_FOUND, "Receiver not found"));
         return reactor;
     }
-//    if ((to->second.type() & READER) == 0)
-//    {
-//        std::cout << "    receiver not reader" << std::endl;
-//        reactor->Finish(grpc::Status(grpc::StatusCode::PERMISSION_DENIED, "Receiver not reader"));
-//        return reactor;
-//    }
+    if ((to->second.type() & READER) == 0)
+    {
+        std::cout << "    receiver not reader" << std::endl;
+        reactor->Finish(grpc::Status(grpc::StatusCode::PERMISSION_DENIED, "Receiver not reader"));
+        return reactor;
+    }
 
-    // TODO route message
+    peers_map_t::iterator ito = m_peers.find(request->to());
+    if (ito == m_peers.end())
+    {
+        // TODO find and broadcast to group?
+        std::cout << "    no receiver" << std::endl;
+        reactor->Finish(grpc::Status(grpc::StatusCode::NOT_FOUND, "Receiver not found"));
+        return reactor;
+    }
+
     writers_t::iterator it = m_writers.find(request->to());
     if (it == m_writers.end())
     {
@@ -266,6 +284,142 @@ grpc::ServerUnaryReactor * Service::sendMessage(grpc::CallbackServerContext * co
     }
 
     it->second->StartWrite(request);
+
+    reactor->Finish(grpc::Status::OK);
+    return reactor;
+}
+
+//******************************************************************************
+//******************************************************************************
+grpc::ServerUnaryReactor * Service::p2pInit(grpc::CallbackServerContext * context,
+                                            const rpcroc::P2PInit * request,
+                                            rpcroc::Empty * reply)
+{
+    std::cout << "p2pInit from " << request->from()
+              << " to " << request->to() << std::endl;
+
+    grpc::ServerUnaryReactor * reactor = context->DefaultReactor();
+
+    if (request->from() == request->to())
+    {
+        reactor->Finish(grpc::Status(grpc::StatusCode::CANCELLED, "Sender eq receiver"));
+        return reactor;
+    }
+
+    writers_t::iterator it = m_writers.find(request->to());
+    if (it == m_writers.end())
+    {
+        reactor->Finish(grpc::Status(grpc::StatusCode::NOT_FOUND, "Peer not found"));
+        return reactor;
+    }
+
+    rpcroc::Message m;
+    m.set_from(request->from());
+    m.set_to(request->to());
+    m.set_msg("JP2PI " + request->sdp());
+    it->second->StartWrite(&m);
+
+    reactor->Finish(grpc::Status::OK);
+    return reactor;
+}
+
+//******************************************************************************
+//******************************************************************************
+grpc::ServerUnaryReactor * Service::p2pAccept(grpc::CallbackServerContext * context,
+                                              const rpcroc::P2PAccept * request,
+                                              rpcroc::Empty * reply)
+{
+    std::cout << "p2pAccept from " << request->from()
+              << " to " << request->to() << std::endl;
+
+    grpc::ServerUnaryReactor * reactor = context->DefaultReactor();
+
+    if (request->from() == request->to())
+    {
+        reactor->Finish(grpc::Status(grpc::StatusCode::CANCELLED, "Sender eq receiver"));
+        return reactor;
+    }
+
+    writers_t::iterator it = m_writers.find(request->to());
+    if (it == m_writers.end())
+    {
+        reactor->Finish(grpc::Status(grpc::StatusCode::NOT_FOUND, "Peer not found"));
+        return reactor;
+    }
+
+    rpcroc::Message m;
+    m.set_from(request->from());
+    m.set_to(request->to());
+    m.set_msg("JP2PA " + request->sdp());
+    it->second->StartWrite(&m);
+
+    reactor->Finish(grpc::Status::OK);
+    return reactor;
+}
+
+//******************************************************************************
+//******************************************************************************
+grpc::ServerUnaryReactor * Service::p2pCandidate(grpc::CallbackServerContext * context,
+                                                 const rpcroc::P2PCandidate * request,
+                                                 rpcroc::Empty * reply)
+{
+    std::cout << "p2pCandidate from " << request->from()
+              << " to " << request->to() << std::endl;
+
+    grpc::ServerUnaryReactor * reactor = context->DefaultReactor();
+
+    if (request->from() == request->to())
+    {
+        reactor->Finish(grpc::Status(grpc::StatusCode::CANCELLED, "Sender eq receiver"));
+        return reactor;
+    }
+
+    writers_t::iterator it = m_writers.find(request->to());
+    if (it == m_writers.end())
+    {
+        reactor->Finish(grpc::Status(grpc::StatusCode::NOT_FOUND, "Peer not found"));
+        return reactor;
+    }
+
+    rpcroc::Message m;
+    m.set_from(request->from());
+    m.set_to(request->to());
+    m.set_msg("JP2PC " + request->candidate());
+    it->second->StartWrite(&m);
+
+    reactor->Finish(grpc::Status::OK);
+    return reactor;
+}
+
+//******************************************************************************
+//******************************************************************************
+grpc::ServerUnaryReactor * Service::p2pDisconnect(grpc::CallbackServerContext * context,
+                                                  const rpcroc::P2PDisconnect * request,
+                                                  rpcroc::Empty * reply)
+{
+    std::cout << "p2pDisconnect from " << request->from()
+              << " to " << request->to() << std::endl;
+
+    grpc::ServerUnaryReactor * reactor = context->DefaultReactor();
+
+    if (request->from() == request->to())
+    {
+        reactor->Finish(grpc::Status(grpc::StatusCode::CANCELLED, "Sender eq receiver"));
+        return reactor;
+    }
+
+    writers_t::iterator it = m_writers.find(request->to());
+    if (it == m_writers.end())
+    {
+        reactor->Finish(grpc::Status(grpc::StatusCode::NOT_FOUND, "Peer not found"));
+        return reactor;
+    }
+
+    rpcroc::Message m;
+    m.set_from(request->from());
+    m.set_to(request->to());
+    m.set_msg("JP2PD " + request->reason());
+    it->second->StartWrite(&m);
 
     reactor->Finish(grpc::Status::OK);
     return reactor;

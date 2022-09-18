@@ -74,7 +74,6 @@ void GRpcClient::subscribe(const uint32_t type, on_message_handler_t handler)
         Peer peer;
         peer.set_id(m_id);
         peer.set_group(m_group);
-        peer.set_sdp(m_sdp);
         peer.set_type(type == 2 ? WRITER :
                       type == 3 ? READER | WRITER :
                                   READER);
@@ -89,7 +88,7 @@ void GRpcClient::subscribe(const uint32_t type, on_message_handler_t handler)
 
             if (m_messageHandler)
             {
-                m_messageHandler(m.from(), m.msg());
+                m_messageHandler(m.from(), m.to(), m.msg());
             }
         }
 
@@ -119,7 +118,6 @@ void GRpcClient::unsubscribe()
     Peer peer;
     peer.set_id(m_id);
     peer.set_group(m_group);
-    peer.set_sdp(m_sdp);
     peer.set_type(READER | WRITER);
 
     Empty resp;
@@ -158,6 +156,98 @@ void GRpcClient::sendMessage(const std::string & to, const std::string & msg)
                   << std::endl;
         return;
     }
+}
+
+//******************************************************************************
+//******************************************************************************
+bool GRpcClient::p2pInit(const std::string & to, const std::string & sdp)
+{
+    P2PInit initmsg;
+    initmsg.set_from(m_id);
+    initmsg.set_to(to);
+    initmsg.set_sdp(sdp);
+
+    Empty resp;
+
+    grpc::ClientContext context;
+    grpc::Status status = m_stub->p2pInit(&context, initmsg, &resp);
+    if (!status.ok())
+    {
+        std::cout << status.error_code() << " : " << status.error_message()
+                  << std::endl;
+        return false;
+    }
+
+    return true;
+}
+
+//******************************************************************************
+//******************************************************************************
+bool GRpcClient::p2pAccept(const std::string & to, const std::string & sdp)
+{
+    P2PAccept accmsg;
+    accmsg.set_from(m_id);
+    accmsg.set_to(to);
+    accmsg.set_sdp(sdp);
+
+    Empty resp;
+
+    grpc::ClientContext context;
+    grpc::Status status = m_stub->p2pAccept(&context, accmsg, &resp);
+    if (!status.ok())
+    {
+        std::cout << status.error_code() << " : " << status.error_message()
+                  << std::endl;
+        return false;
+    }
+
+    return true;
+}
+
+//******************************************************************************
+//******************************************************************************
+bool GRpcClient::p2pCandidate(const std::string & to, const std::string & candidate)
+{
+    P2PCandidate cndmsg;
+    cndmsg.set_from(m_id);
+    cndmsg.set_to(to);
+    cndmsg.set_candidate(candidate);
+
+    Empty resp;
+
+    grpc::ClientContext context;
+    grpc::Status status = m_stub->p2pCandidate(&context, cndmsg, &resp);
+    if (!status.ok())
+    {
+        std::cout << status.error_code() << " : " << status.error_message()
+                  << std::endl;
+        return false;
+    }
+
+    return true;
+}
+
+//******************************************************************************
+//******************************************************************************
+bool GRpcClient::p2pDisconnect(const std::string & to, const std::string & reason)
+{
+    P2PDisconnect dmsg;
+    dmsg.set_from(m_id);
+    dmsg.set_to(to);
+    dmsg.set_reason(reason);
+
+    Empty resp;
+
+    grpc::ClientContext context;
+    grpc::Status status = m_stub->p2pDisconnect(&context, dmsg, &resp);
+    if (!status.ok())
+    {
+        std::cout << status.error_code() << " : " << status.error_message()
+                  << std::endl;
+        return false;
+    }
+
+    return true;
 }
 
 } // namespace rpcroc

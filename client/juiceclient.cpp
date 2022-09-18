@@ -19,23 +19,25 @@ class JuiceClient::impl
 {
     friend class JuiceClient;
 
-    impl(JuiceClient * owner)
+    impl(JuiceClient * owner, const std::string & id)
         : m_o(owner)
+        , m_id(id)
     {
     }
 
-    JuiceClient       * m_o;
-
-    juice_agent_t     * m_agent;
+    JuiceClient       * m_o     = nullptr;
+    std::string         m_id;
+    juice_agent_t     * m_agent = nullptr;
     juice_config_t      m_config;
     juice_turn_server_t m_turnServer;
 };
 
 //******************************************************************************
 //******************************************************************************
-JuiceClient::JuiceClient(on_state_changed_t onStateChangedHandler, on_candidate_t onCandidateHandler,
+JuiceClient::JuiceClient(const std::string & id,
+                         on_state_changed_t onStateChangedHandler, on_candidate_t onCandidateHandler,
                          on_gathering_done_t onGatheringDoneHandler, on_recv_t onReceiveHandler)
-    : m_p(new impl(this))
+    : m_p(new impl(this, id))
     , m_onStateChangedHandler(onStateChangedHandler)
     , m_onCandidateHandler(onCandidateHandler)
     , m_onGatheringDoneHandler(onGatheringDoneHandler)
@@ -48,12 +50,12 @@ JuiceClient::JuiceClient(on_state_changed_t onStateChangedHandler, on_candidate_
 //******************************************************************************
 JuiceClient::~JuiceClient()
 {
-    juice_destroy(m_p->m_agent);
+    disconnect();
 }
 
 //******************************************************************************
 //******************************************************************************
-void JuiceClient::init()
+bool JuiceClient::init()
 {
     memset(&m_p->m_config, 0, sizeof(juice_config_t));
 
@@ -77,14 +79,41 @@ void JuiceClient::init()
     m_p->m_config.user_ptr          = this;
 
     m_p->m_agent = juice_create(&m_p->m_config);
+    return (m_p->m_agent != nullptr);
 }
 
 //******************************************************************************
 //******************************************************************************
-void JuiceClient::connect(const std::string & sdpRemote)
+bool JuiceClient::init(const std::string & sdp)
 {
-    juice_set_remote_description(m_p->m_agent, sdpRemote.c_str());
-    juice_gather_candidates(m_p->m_agent);
+    return (init() &&
+            juice_set_remote_description(m_p->m_agent, sdp.c_str()) == JUICE_ERR_SUCCESS &&
+            juice_gather_candidates(m_p->m_agent) == JUICE_ERR_SUCCESS);
+}
+
+//******************************************************************************
+//******************************************************************************
+bool JuiceClient::connect(const std::string & sdpRemote)
+{
+    if (!m_p->m_agent)
+    {
+        std::cout << "need init" << std::endl;
+        return false;
+    }
+    return (juice_set_remote_description(m_p->m_agent, sdpRemote.c_str()) == JUICE_ERR_SUCCESS &&
+            juice_gather_candidates(m_p->m_agent) == JUICE_ERR_SUCCESS);
+}
+
+//******************************************************************************
+//******************************************************************************
+void JuiceClient::disconnect()
+{
+    if (!m_p->m_agent)
+    {
+        return;
+    }
+    juice_destroy(m_p->m_agent);
+    m_p->m_agent = nullptr;
 }
 
 //******************************************************************************
@@ -99,6 +128,13 @@ void JuiceClient::addRemote(const std::string & sdpRemote)
 void JuiceClient::sendMessage(const std::string & message)
 {
     juice_send(m_p->m_agent, message.c_str(), message.size());
+}
+
+//******************************************************************************
+//******************************************************************************
+std::string JuiceClient::id() const
+{
+    return m_p->m_id;
 }
 
 //******************************************************************************
