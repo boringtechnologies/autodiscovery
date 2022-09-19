@@ -141,10 +141,14 @@ void media::Receiver::stop() {
 }
 
 bool media::Receiver::push(const uint8_t *payload, size_t len) {
+    GstState cur_state = GST_STATE_NULL, pending_state;
     GstBuffer *buf;
     GstMapInfo info;
     GstFlowReturn ret;
 
+    gst_element_get_state(pipeline, &cur_state, &pending_state, 0);
+    if (cur_state != GST_STATE_PAUSED && cur_state != GST_STATE_PLAYING)
+        return true;
 
     buf = gst_buffer_new_allocate(nullptr, len, nullptr);
     if (buf == nullptr) {
