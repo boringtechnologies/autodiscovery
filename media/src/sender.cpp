@@ -70,8 +70,8 @@ media::Sender::Sender(const std::string &id, media::MediaType type,
                       const media::ClockInfo &clock)
     : thread(nullptr), write_cbs() {
     GstBus *bus;
-    GstElement *source, *conv, *rate, *capsf, *encoder, *payloader, *queue,
-        *fakesink;
+    GstElement *source, *overlay, *conv, *rate, *capsf, *encoder, *payloader,
+        *queue, *fakesink;
     gst_init(nullptr, nullptr);
 
     loop = g_main_loop_new(nullptr, FALSE);
@@ -83,6 +83,7 @@ media::Sender::Sender(const std::string &id, media::MediaType type,
         MAKE_ELEMENT(conv, "audioconvert", "conv");
         MAKE_ELEMENT(rate, "audioresample", "rate");
         MAKE_ELEMENT(capsf, "capsfilter", "capsf");
+        MAKE_ELEMENT(overlay, "identity", "dummy");
         g_object_set(capsf, "caps",
                      gst_caps_from_string("audio/x-raw,rate=48000"), nullptr);
         MAKE_ELEMENT(encoder, "opusenc", "publisher-audioenc");
@@ -94,6 +95,7 @@ media::Sender::Sender(const std::string &id, media::MediaType type,
         MAKE_ELEMENT(conv, "videoconvert", "conv");
         MAKE_ELEMENT(rate, "videorate", "rate");
         MAKE_ELEMENT(capsf, "capsfilter", "capsf");
+        MAKE_ELEMENT(overlay, "clockoverlay", "overlay");
         g_object_set(capsf, "caps",
                      gst_caps_from_string("video/x-raw,framerate=30/1"),
                      nullptr);
@@ -115,15 +117,25 @@ media::Sender::Sender(const std::string &id, media::MediaType type,
     bus_watch_id = gst_bus_add_watch(bus, bus_callback, loop);
     gst_object_unref(bus);
 
-    gst_bin_add_many(GST_BIN(pipeline), source, conv, rate, capsf, encoder,
-                     payloader, tee, queue, fakesink, nullptr);
+    gst_bin_add_many(GST_BIN(pipeline), source, overlay, conv, rate, capsf,
+                     encoder, payloader, tee, queue, fakesink, nullptr);
 
-    if (!gst_element_link_many(source, conv, rate, capsf, encoder, payloader,
-                               tee, queue, fakesink, nullptr)) {
+    if (!gst_element_link_many(source, overlay, conv, rate, capsf, encoder,
+                               payloader, tee, queue, fakesink, nullptr)) {
         g_printerr("failed to link the elements\n");
         return;
     }
     g_print("Elements linked successfully\n");
+    GstClock *net_clock = gst_net_client_clock_new(
+        "net-clock", clock.address.c_str(), clock.port, 0);
+    if (net_clock == nullptr) {
+        g_print("Failed to create net clock client\n");
+        return;
+    }
+
+    /* Wait for the clock to stabilise */
+    gst_clock_wait_for_sync(net_clock, GST_CLOCK_TIME_NONE);
+    gst_pipeline_use_clock(GST_PIPELINE(pipeline), net_clock);
 }
 
 media::Sender::~Sender() {
@@ -201,9 +213,9 @@ void media::Sender::addReceiver(const std::string &id,
     bin = gst_bin_new(id.c_str());
     g_assert(bin != nullptr);
 
-    MAKE_ELEMENT(rtpbin, "rtpbin", "publisher-rtpbin");
-    MAKE_ELEMENT(queue, "queue", "publisher-q");
-    MAKE_ELEMENT(appsink, "appsink", "publisher-appsink");
+    MAKE_ELEMENT(rtpbin, "rtpbin", (id + "-publisher-rtpbin").c_str());
+    MAKE_ELEMENT(queue, "queue", (id + "-publisher-q").c_str());
+    MAKE_ELEMENT(appsink, "appsink", (id + "-publisher-appsink").c_str());
 
     if (!bin || !queue || !rtpbin || !appsink) {
         g_printerr("failed to create elements in addReceiver");
@@ -218,10 +230,17 @@ void media::Sender::addReceiver(const std::string &id,
     ctx->sender = this;
     ctx->id = id;
 
-    GstAppSinkCallbacks callbacks = { 0 };
+    GstAppSinkCallbacks callbacks = {0};
     callbacks.new_sample = new_sample;
-    gst_app_sink_set_callbacks(GST_APP_SINK(appsink), &callbacks, ctx, write_cb_ctx_free);
-    g_object_set(appsink, "emit-signals", FALSE, NULL);
+    gst_app_sink_set_callbacks(GST_APP_SINK(appsink), &callbacks, ctx,
+                               write_cb_ctx_free);
+    g_object_set(appsink, "emit-signals", FALSE, nullptr);
+    g_object_set(rtpbin, "ntp-time-source", 3, nullptr);
+
+    // TODO: temp code to add delay intentionally in one of the receivers
+    if (0 == id.compare("rx2")) {
+        g_object_set(queue, "min-threshold-time", 2000000000, nullptr);
+    }
 
     gst_bin_add_many(GST_BIN(bin), queue, rtpbin, appsink, nullptr);
 
@@ -265,7 +284,7 @@ gboolean set_to_null(gpointer data) {
 
     gst_object_unref(ctx->bin);
     ctx->sender->write_cbs.erase(ctx->id);
-    delete(ctx);
+    delete (ctx);
 
     return FALSE;
 }

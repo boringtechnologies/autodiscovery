@@ -50,6 +50,7 @@ static void write_callback(int sock, const std::string &addr,
 void sender_cli(media::Sender &sndr, int sock) {
     while (true) {
         int input;
+        std::cout << std::endl << std::endl;
         std::cout << "Please provide input" << std::endl;
         std::cout << USER_OPTS << std::endl;
         std::cin >> input;
@@ -58,6 +59,7 @@ void sender_cli(media::Sender &sndr, int sock) {
                 std::string host;
                 uint16_t port;
                 std::string rcvr_id;
+                std::cout << std::endl << std::endl;
                 std::cout << "provide host port rcvrid" << std::endl;
                 std::cin >> host >> port >> rcvr_id;
                 sndr.addReceiver(rcvr_id, [=](const uint8_t *data, size_t len) {
@@ -74,8 +76,15 @@ void sender_cli(media::Sender &sndr, int sock) {
                 sndr.stop();
                 return;
             default:
-                std::cout << "invalid command" << std::endl;
-                continue;
+                std::cout << std::endl << std::endl;
+                std::cout << "!!!!!!!!!!!!!!!!!" << std::endl;
+                std::cout << "invalid command!" << std::endl;
+                std::cout << "!!!!!!!!!!!!!!!!!" << std::endl;
+                std::cout << std::endl << std::endl;
+                std::cin.clear();
+                std::cin.ignore(std::numeric_limits<std::streamsize>::max(),
+                                '\n');
+                break;
         }
     }
 }
@@ -108,7 +117,7 @@ void receiver_thread(media::Receiver &rx, const std::string &addr,
         if ((ret = recvfrom(sock_desc, client_msg, sizeof(client_msg), 0,
                             (struct sockaddr *)&client_addr,
                             &client_struct_length)) < 0) {
-            std::cerr << "Couldnt receiver from client \n";
+            std::cerr << "Couldnt receive buffer from the client \n";
             continue;
         }
 
@@ -126,7 +135,7 @@ void receiver_thread(media::Receiver &rx, const std::string &addr,
 }
 
 int main(int argc, char **argv) {
-    media::ClockInfo clock;
+    media::ClockInfo clock = {"0.0.0.0", 50000};
     media::MediaType type = media::MediaType::Video;
     media::CaptureDevice dev;
 
@@ -169,8 +178,9 @@ int main(int argc, char **argv) {
     } else if (mode == 'r') {
         uint16_t port;
         media::PlaybackDevice dev;
-        media::ClockInfo clock;
         std::chrono::duration<int> delay;
+        bool sync = false;
+        std::string inp;
         loop = g_main_loop_new(NULL, false);
 
         std::cout << "Using default address 0.0.0.0. please provide udp port "
@@ -178,7 +188,13 @@ int main(int argc, char **argv) {
         std::cin >> port;
         std::string addr = "0.0.0.0";
 
-        media::Receiver recvr("receiver", type, dev, clock, delay);
+        std::cout << "press 'Y' to enable synchronization" << std::endl;
+        std::cin >> inp;
+
+        if (0 == inp.compare("Y")) sync = true;
+
+        media::Receiver recvr(std::to_string(port).c_str(), type, dev, clock,
+                              delay, sync);
 
         recvr.start();
         std::thread th(receiver_thread, std::ref(recvr), addr, port);

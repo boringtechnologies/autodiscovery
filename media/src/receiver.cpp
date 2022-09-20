@@ -47,10 +47,10 @@ static void rtpbin_pad_padded(GstElement *ele, GstPad *pad, gpointer userdata) {
 
 media::Receiver::Receiver(const std::string &id, MediaType type,
                           const PlaybackDevice &device, const ClockInfo &clock,
-                          std::chrono::duration<int> delay)
+                          std::chrono::duration<int> delay, bool synchronize)
     : thread(nullptr) {
     GstBus *bus;
-    GstElement *rtpbin, *depayloader, *decoder, *sink;
+    GstElement *rtpbin, *overlay, *depayloader, *decoder, *sink;
     gst_init(nullptr, nullptr);
 
     loop = g_main_loop_new(nullptr, FALSE);
@@ -70,6 +70,7 @@ media::Receiver::Receiver(const std::string &id, MediaType type,
         MAKE_ELEMENT(depayloader, "rtpopusdepay", "receiver-depay");
         MAKE_ELEMENT(decoder, "opusdec", "receiver-dec");
         MAKE_ELEMENT(sink, "autoaudiosink", "receiver-sink");
+        MAKE_ELEMENT(overlay, "identity", "dummy");
         g_object_set(
             appsrc, "caps",
             gst_caps_from_string("application/"
@@ -80,6 +81,9 @@ media::Receiver::Receiver(const std::string &id, MediaType type,
         MAKE_ELEMENT(depayloader, "rtpvp8depay", "receiver-depay");
         MAKE_ELEMENT(decoder, "vp8dec", "receiver-dec");
         MAKE_ELEMENT(sink, "autovideosink", "receiver-sink");
+        MAKE_ELEMENT(overlay, "clockoverlay", "overlay");
+        g_object_set(overlay, "valignment", 1, nullptr);
+        g_object_set(overlay, "text", id.c_str(), nullptr);
         g_object_set(
             appsrc, "caps",
             gst_caps_from_string("application/"
@@ -89,7 +93,12 @@ media::Receiver::Receiver(const std::string &id, MediaType type,
     }
     g_signal_connect(rtpbin, "pad-added", G_CALLBACK(rtpbin_pad_padded),
                      depayloader);
-    g_object_set(rtpbin, "buffer-mode", 0, NULL);
+    if (synchronize) {
+        g_object_set(rtpbin, "buffer-mode", 4, "ntp-time-source", 3, "ntp-sync",
+                     TRUE, nullptr);
+    } else {
+        g_object_set(rtpbin, "buffer-mode", 0, nullptr);
+    }
 
     GstPad *src_pad = gst_element_get_static_pad(appsrc, "src");
     GstPad *recv_rtp_sink_pad =
@@ -100,12 +109,29 @@ media::Receiver::Receiver(const std::string &id, MediaType type,
     gst_object_unref(bus);
 
     gst_bin_add_many(GST_BIN(pipeline), appsrc, rtpbin, depayloader, decoder,
-                     sink, NULL);
+                     overlay, sink, nullptr);
+
     gst_pad_link(src_pad, recv_rtp_sink_pad);
 
-    if (!gst_element_link_many(depayloader, decoder, sink, NULL)) {
+    if (!gst_element_link_many(depayloader, decoder, overlay, sink, nullptr)) {
         g_printerr("Failed to link the elements\n");
         return;
+    }
+
+    if (synchronize) {
+        GstClock *net_clock = gst_net_client_clock_new(
+            nullptr, clock.address.c_str(), clock.port, 0);
+        if (net_clock == NULL) {
+            g_print("Failed to create net clock client\n");
+            return;
+        }
+
+        /* Wait for the clock to stabilise */
+        gst_clock_wait_for_sync(net_clock, GST_CLOCK_TIME_NONE);
+        gst_pipeline_use_clock(GST_PIPELINE(pipeline), net_clock);
+        /* Set this high enough so that it's higher than the minimum latency
+         * on all receivers */
+        gst_pipeline_set_latency(GST_PIPELINE(pipeline), 500 * GST_MSECOND);
     }
 }
 

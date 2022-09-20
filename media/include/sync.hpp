@@ -2,6 +2,7 @@
 #define SYNC_H_
 
 #include <gst/gst.h>
+#include <gst/net/net.h>
 
 #include <chrono>
 #include <cstdint>
@@ -131,7 +132,7 @@ class Receiver {
     // XXX: If a Sender sends audio and video, this API will need to change too.
     Receiver(const std::string &id, MediaType type,
              const PlaybackDevice &device, const ClockInfo &clock,
-             std::chrono::duration<int> delay);
+             std::chrono::duration<int> delay, bool synchronize);
 
     // Just tear everything down
     ~Receiver();
