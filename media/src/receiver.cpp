@@ -50,27 +50,23 @@ media::Receiver::Receiver(const std::string &id, MediaType type,
                           std::chrono::duration<int> delay, bool synchronize)
     : thread(nullptr) {
     GstBus *bus;
-    GstElement *rtpbin, *overlay, *depayloader, *decoder, *sink;
+    GstElement *rtpbin, *depayloader, *decoder, *sink;
+    GstElement *udpsink;
     gst_init(nullptr, nullptr);
 
     loop = g_main_loop_new(nullptr, FALSE);
 
-    pipeline = gst_pipeline_new(id.c_str());
-
-    // MAKE_ELEMENT(udpsrc, "udpsrc", "receiver-udpsrc");
-    // g_object_set(udpsrc, "port", receiver.port, NULL);
-    // if (!receiver.address.empty())
-    //     g_object_set(udpsrc, "address", receiver.address.c_str(), NULL);
-    MAKE_ELEMENT(appsrc, "appsrc", "receiver-appsrc");
+    pipeline = gst_pipeline_new(("rx-" + id).c_str());
+    MAKE_ELEMENT(appsrc, "appsrc", ("rx-" + id + "-appsrc").c_str());
     g_object_set(appsrc, "format", GST_FORMAT_TIME, nullptr);
     g_object_set(appsrc, "do-timestamp", true, nullptr);
     g_object_set(appsrc, "is-live", true, nullptr);
-    MAKE_ELEMENT(rtpbin, "rtpbin", "receiver-rtpbin");
+    MAKE_ELEMENT(rtpbin, "rtpbin", ("rx-" + id + "-rtpbin").c_str());
     if (type == media::MediaType::Audio) {
-        MAKE_ELEMENT(depayloader, "rtpopusdepay", "receiver-depay");
-        MAKE_ELEMENT(decoder, "opusdec", "receiver-dec");
-        MAKE_ELEMENT(sink, "autoaudiosink", "receiver-sink");
-        MAKE_ELEMENT(overlay, "identity", "dummy");
+        MAKE_ELEMENT(depayloader, "rtpopusdepay",
+                     ("rx-" + id + "-depay").c_str());
+        MAKE_ELEMENT(decoder, "opusdec", ("rx-" + id + "-dec").c_str());
+        MAKE_ELEMENT(sink, "autoaudiosink", ("rx-" + id + "-sink").c_str());
         g_object_set(
             appsrc, "caps",
             gst_caps_from_string("application/"
@@ -78,12 +74,10 @@ media::Receiver::Receiver(const std::string &id, MediaType type,
                                  "48000,encoding-name=(string)OPUS,payload=97"),
             nullptr);
     } else if (type == media::MediaType::Video) {
-        MAKE_ELEMENT(depayloader, "rtpvp8depay", "receiver-depay");
-        MAKE_ELEMENT(decoder, "vp8dec", "receiver-dec");
-        MAKE_ELEMENT(sink, "autovideosink", "receiver-sink");
-        MAKE_ELEMENT(overlay, "clockoverlay", "overlay");
-        g_object_set(overlay, "valignment", 1, nullptr);
-        g_object_set(overlay, "text", id.c_str(), nullptr);
+        MAKE_ELEMENT(depayloader, "rtpvp8depay",
+                     ("rx-" + id + "-depay").c_str());
+        MAKE_ELEMENT(decoder, "vp8dec", ("rx-" + id + "-dec").c_str());
+        MAKE_ELEMENT(sink, "autovideosink", ("rx-" + id + "-sink").c_str());
         g_object_set(
             appsrc, "caps",
             gst_caps_from_string("application/"
@@ -91,6 +85,11 @@ media::Receiver::Receiver(const std::string &id, MediaType type,
                                  "90000,encoding-name=(string)VP8,payload=101"),
             nullptr);
     }
+    MAKE_ELEMENT(udpsink, "udpsink", ("rx-" + id + "-udpsink-rtcp").c_str());
+
+    // TODO remove the below workaround using id as port number.
+    int port = atoi(id.c_str());
+    g_object_set(udpsink, "host", "0.0.0.0", "port", port + 1, NULL);
     g_signal_connect(rtpbin, "pad-added", G_CALLBACK(rtpbin_pad_padded),
                      depayloader);
     if (synchronize) {
@@ -109,11 +108,11 @@ media::Receiver::Receiver(const std::string &id, MediaType type,
     gst_object_unref(bus);
 
     gst_bin_add_many(GST_BIN(pipeline), appsrc, rtpbin, depayloader, decoder,
-                     overlay, sink, nullptr);
+                     sink, udpsink, nullptr);
 
     gst_pad_link(src_pad, recv_rtp_sink_pad);
-
-    if (!gst_element_link_many(depayloader, decoder, overlay, sink, nullptr)) {
+    gst_element_link_pads(rtpbin, "send_rtcp_src_%u", udpsink, "sink");
+    if (!gst_element_link_many(depayloader, decoder, sink, nullptr)) {
         g_printerr("Failed to link the elements\n");
         return;
     }

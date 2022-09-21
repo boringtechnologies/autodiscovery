@@ -80,38 +80,38 @@ media::Sender::Sender(const std::string &id, media::MediaType type,
 
     if (type == media::MediaType::Audio) {
         source = get_audio_device(device);
-        MAKE_ELEMENT(conv, "audioconvert", "conv");
-        MAKE_ELEMENT(rate, "audioresample", "rate");
-        MAKE_ELEMENT(capsf, "capsfilter", "capsf");
-        MAKE_ELEMENT(overlay, "identity", "dummy");
+        MAKE_ELEMENT(conv, "audioconvert", (id + "-publisher-conv").c_str());
+        MAKE_ELEMENT(rate, "audioresample", (id + "-publisher-rate").c_str());
+        MAKE_ELEMENT(capsf, "capsfilter", (id + "-publisher-capsf").c_str());
+        MAKE_ELEMENT(overlay, "identity", (id + "-publisher-dummy").c_str());
         g_object_set(capsf, "caps",
                      gst_caps_from_string("audio/x-raw,rate=48000"), nullptr);
         MAKE_ELEMENT(encoder, "opusenc", "publisher-audioenc");
-        payloader =
-            gst_element_factory_make("rtpopuspay", "publisher-audiopayload");
+        payloader = gst_element_factory_make(
+            "rtpopuspay", (id + "-publisher-audiopayload").c_str());
         g_object_set(payloader, "pt", 97, NULL);
     } else if (type == media::MediaType::Video) {
         source = get_video_device(device);
-        MAKE_ELEMENT(conv, "videoconvert", "conv");
-        MAKE_ELEMENT(rate, "videorate", "rate");
-        MAKE_ELEMENT(capsf, "capsfilter", "capsf");
-        MAKE_ELEMENT(overlay, "clockoverlay", "overlay");
+        MAKE_ELEMENT(conv, "videoconvert", (id + "-publisher-conv").c_str());
+        MAKE_ELEMENT(rate, "videorate", (id + "-publisher-rate").c_str());
+        MAKE_ELEMENT(capsf, "capsfilter", (id + "-publisher-capsf").c_str());
+        MAKE_ELEMENT(overlay, "clockoverlay",
+                     (id + "-publisher-overlay").c_str());
         g_object_set(capsf, "caps",
                      gst_caps_from_string("video/x-raw,framerate=30/1"),
                      nullptr);
-        MAKE_ELEMENT(encoder, "vp8enc", "publisher-videoenc");
-        // Generates a keyframe every 10s, we can drop that part when we wire
-        // up RTCP feedback
-        g_object_set(encoder, "deadline", 1, "keyframe-max-dist", 300, nullptr);
-        payloader =
-            gst_element_factory_make("rtpvp8pay", "publisher-videopayload");
+        MAKE_ELEMENT(encoder, "vp8enc", (id + "-publisher-videoenc").c_str());
+        // Generates a keyframe every 5s, with RTCP feedback in place
+        g_object_set(encoder, "deadline", 1, "keyframe-max-dist", 150, nullptr);
+        payloader = gst_element_factory_make(
+            "rtpvp8pay", (id + "-publisher-videopayload").c_str());
         g_object_set(payloader, "pt", 101, NULL);
     }
     // TODO: Add a muxer when we want both audio and video from a single
     // publisher
-    MAKE_ELEMENT(tee, "tee", "publisher-tee");
-    MAKE_ELEMENT(queue, "queue", "publisher-queue");
-    MAKE_ELEMENT(fakesink, "fakesink", "fakesink");
+    MAKE_ELEMENT(tee, "tee", (id + "-publisher-tee").c_str());
+    MAKE_ELEMENT(queue, "queue", (id + "-publisher-queue").c_str());
+    MAKE_ELEMENT(fakesink, "fakesink", (id + "-publisher-fakesink").c_str());
 
     bus = gst_pipeline_get_bus(GST_PIPELINE(pipeline));
     bus_watch_id = gst_bus_add_watch(bus, bus_callback, loop);
@@ -200,9 +200,24 @@ static GstFlowReturn new_sample(GstAppSink *sink, gpointer userdata) {
     return GST_FLOW_ERROR;
 }
 
+static void rtpbin_pad_padded(GstElement *ele, GstPad *pad, gpointer userdata) {
+    gchar *padname = gst_pad_get_name(pad);
+    gchar *prefix = g_strdup_printf("send_rtp_src_");
+    g_printerr("%s pad added\n", padname);
+    if (g_str_has_prefix(padname, prefix)) {
+        GstElement *downstream = (GstElement *)userdata;
+        GstPad *sinkpad = gst_element_get_request_pad(downstream, "sink_%u");
+        gst_pad_link(pad, sinkpad);
+        gst_object_unref(sinkpad);
+    }
+    g_free(prefix);
+    g_free(padname);
+}
+
 void media::Sender::addReceiver(const std::string &id,
                                 media::WriteCallback write_cb) {
-    GstElement *appsink, *rtpbin, *queue;
+    GstElement *appsink, *rtpbin, *funnel;
+    GstElement *udpsrc;
     GstElement *bin = gst_bin_get_by_name(GST_BIN(pipeline), id.c_str());
 
     if (bin != nullptr) {
@@ -214,10 +229,13 @@ void media::Sender::addReceiver(const std::string &id,
     g_assert(bin != nullptr);
 
     MAKE_ELEMENT(rtpbin, "rtpbin", (id + "-publisher-rtpbin").c_str());
-    MAKE_ELEMENT(queue, "queue", (id + "-publisher-q").c_str());
+    MAKE_ELEMENT(funnel, "funnel", (id + "-publisher-funnel").c_str());
     MAKE_ELEMENT(appsink, "appsink", (id + "-publisher-appsink").c_str());
+    MAKE_ELEMENT(udpsrc, "udpsrc", "udpsrc");
+    MAKE_ELEMENT(rtcp_appsrc, "appsrc",
+                 (id + "-publisher-rtcp-appsrc").c_str());
 
-    if (!bin || !queue || !rtpbin || !appsink) {
+    if (!bin || !funnel || !rtpbin || !appsink) {
         g_printerr("failed to create elements in addReceiver");
         return;
     }
@@ -229,36 +247,39 @@ void media::Sender::addReceiver(const std::string &id,
     WriteCallbackCtx *ctx = g_new0(WriteCallbackCtx, 1);
     ctx->sender = this;
     ctx->id = id;
-
     GstAppSinkCallbacks callbacks = {0};
     callbacks.new_sample = new_sample;
     gst_app_sink_set_callbacks(GST_APP_SINK(appsink), &callbacks, ctx,
                                write_cb_ctx_free);
     g_object_set(appsink, "emit-signals", FALSE, nullptr);
     g_object_set(rtpbin, "ntp-time-source", 3, nullptr);
+    g_object_set(rtpbin, "rtcp-sync-send-time", false, nullptr);
+    g_signal_connect(rtpbin, "pad-added", G_CALLBACK(rtpbin_pad_padded),
+                     funnel);
 
-    // TODO: temp code to add delay intentionally in one of the receivers
-    if (0 == id.compare("rx2")) {
-        g_object_set(queue, "min-threshold-time", 2000000000, nullptr);
-    }
+    guint port = atoi(id.c_str()) + 1;
+    g_object_set(udpsrc, "port", port, NULL);
+    g_object_set(rtcp_appsrc, "format", GST_FORMAT_TIME, nullptr);
+    g_object_set(rtcp_appsrc, "do-timestamp", true, nullptr);
+    g_object_set(rtcp_appsrc, "is-live", true, nullptr);
 
-    gst_bin_add_many(GST_BIN(bin), queue, rtpbin, appsink, nullptr);
+    gst_bin_add_many(GST_BIN(bin), rtpbin, funnel, appsink, udpsrc, nullptr);
 
     GstPad *rtp_send_sinkpad =
         gst_element_get_request_pad(rtpbin, "send_rtp_sink_%u");
-    GstPad *queue_src_pad = gst_element_get_static_pad(queue, "src");
+    if (!gst_element_link_pads(rtpbin, "send_rtcp_src_%u", funnel, "sink_%u"))
+        g_printerr("Failed to link rtcp src and funnel");
 
-    if (GST_PAD_LINK_OK != gst_pad_link(queue_src_pad, rtp_send_sinkpad))
-        g_print("failed to link queue_src_pad and rtp_send_sinkpad");
+    if (!gst_element_link_pads(udpsrc, "src", rtpbin, "recv_rtcp_sink_%u"))
+        g_printerr("Failed to link udpsrc and rtcp rcv sink");
 
-    if (!gst_element_link_many(rtpbin, appsink, nullptr))
-        g_print("failed to link rtpbin and appsink");
+    if (!gst_element_link_many(funnel, appsink, nullptr))
+        g_print("failed to link funnel and appsink");
 
     gst_bin_add(GST_BIN(pipeline), bin);
     gst_element_sync_state_with_parent(bin);
 
-    GstPad *queue_sink_pad = gst_element_get_static_pad(queue, "sink");
-    GstPad *bin_ghost_pad = gst_ghost_pad_new("sink", queue_sink_pad);
+    GstPad *bin_ghost_pad = gst_ghost_pad_new("sink", rtp_send_sinkpad);
 
     gst_element_add_pad(bin, bin_ghost_pad);
     if (!gst_element_link(tee, bin)) g_printerr("failed to link tee and bin");
@@ -326,4 +347,37 @@ void media::Sender::removeReceiver(const std::string &id) {
 
     gst_object_unref(bin_ghost_pad);
     gst_object_unref(tee_src_pad);
+}
+
+bool media::Sender::push(const uint8_t *payload, size_t len) {
+    GstState cur_state = GST_STATE_NULL, pending_state;
+    GstBuffer *buf;
+    GstMapInfo info;
+    GstFlowReturn ret;
+
+    gst_element_get_state(pipeline, &cur_state, &pending_state, 0);
+    if (cur_state != GST_STATE_PAUSED && cur_state != GST_STATE_PLAYING)
+        return true;
+
+    buf = gst_buffer_new_allocate(nullptr, len, nullptr);
+    if (buf == nullptr) {
+        g_printerr("Failed to allocate buffer\n");
+        return false;
+    }
+
+    if (!gst_buffer_map(buf, &info, GST_MAP_WRITE)) {
+        g_printerr("Failed to get buffer map\n");
+        return false;
+    }
+    memcpy(info.data, payload, len);
+    gst_buffer_unmap(buf, &info);
+
+    g_signal_emit_by_name(rtcp_appsrc, "push-buffer", buf, &ret);
+    gst_buffer_unref(buf);
+    if (ret == GST_FLOW_ERROR) {
+        g_printerr("Failed to do 'push-buffer' \n");
+        return false;
+    }
+
+    return true;
 }

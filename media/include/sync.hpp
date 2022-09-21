@@ -62,7 +62,7 @@ class Sender {
     std::unique_ptr<std::thread> thread;
     GMainLoop *loop;
     guint bus_watch_id;
-    GstElement *pipeline, *tee;
+    GstElement *pipeline, *tee, *rtcp_appsrc;
 
    public:
     // The constructor takes:
@@ -103,6 +103,10 @@ class Sender {
 
     // FIXME: Can we make this private?
     std::map<std::string, WriteCallback> write_cbs;
+    // Push the data to the appsrc
+    // returns TRUE is push is successful
+    // returns FALSE in case of an error
+    bool push(const uint8_t *payload, size_t len);
 };
 
 struct PlaybackDevice {
@@ -117,6 +121,8 @@ class Receiver {
     GMainLoop *loop;
     guint bus_watch_id;
     GstElement *pipeline, *appsrc;
+    // XXX: Make the instantation of the Clock global to all the receivers in a
+    // single app
 
    public:
     // The constructor takes:
