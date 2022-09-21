@@ -45,6 +45,21 @@ static void rtpbin_pad_padded(GstElement *ele, GstPad *pad, gpointer userdata) {
     g_free(padname);
 }
 
+GstElement* get_audio_device(const std::string &id) {
+    GstElement *sink;
+
+#if defined(__linux__)
+    MAKE_ELEMENT(sink, "pulsesink", ("rx-" + id + "-sink").c_str());
+#elif defined(__APPLE__)
+    MAKE_ELEMENT(sink, "osxaudiosink", ("rx-" + id + "-sink").c_str());
+#endif
+
+    g_object_set(sink, "drift-tolerance", 10000, NULL);
+    g_object_set(sink, "alignment-threshold", 10000, NULL);
+
+    return sink;
+}
+
 media::Receiver::Receiver(const std::string &id, MediaType type,
                           const PlaybackDevice &device, const ClockInfo &clock,
                           std::chrono::duration<int> delay, bool synchronize)
@@ -66,7 +81,7 @@ media::Receiver::Receiver(const std::string &id, MediaType type,
         MAKE_ELEMENT(depayloader, "rtpopusdepay",
                      ("rx-" + id + "-depay").c_str());
         MAKE_ELEMENT(decoder, "opusdec", ("rx-" + id + "-dec").c_str());
-        MAKE_ELEMENT(sink, "autoaudiosink", ("rx-" + id + "-sink").c_str());
+        sink = get_audio_device(id);
         g_object_set(
             appsrc, "caps",
             gst_caps_from_string("application/"
