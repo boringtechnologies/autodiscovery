@@ -429,7 +429,7 @@ int main(int argc, char * argv[])
             captureDevice.name = "/dev/video0";
 
             std::string params;
-            getline(std::cin, params);
+            std::cin >> params;
             std::vector<std::string> v = parseCommand(params);
             if (v.size() < 1)
             {
