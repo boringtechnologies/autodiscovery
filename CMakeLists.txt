@@ -8,16 +8,25 @@ project(grpc-roc LANGUAGES CXX)
 include(cmake/common.cmake)
 
 
-if(NOT APPLE)
-    set(BUILD_SHARED_LIBS OFF)
-    set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++ -static")
-endif()
+#if(NOT APPLE)
+#    set(BUILD_SHARED_LIBS OFF)
+#    set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++ -static")
+#endif()
 
 # set(ZLIB_USE_STATIC_LIBS "ON")
 set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
 find_package(ZLIB REQUIRED)
 
 find_package(LibJuice REQUIRED)
+find_package(Threads REQUIRED)
+find_package(PkgConfig REQUIRED)
+
+pkg_check_modules(GST REQUIRED
+        gobject-2.0
+        glib-2.0
+        gstreamer-1.0
+        gstreamer-app-1.0
+)
 
 # Proto files
 get_filename_component(grpc_roc_proto "common/proto/grpc-roc.proto" ABSOLUTE)
@@ -36,6 +45,8 @@ add_custom_command(
         --plugin=protoc-gen-grpc="${_GRPC_CPP_PLUGIN_EXECUTABLE}"
         "${grpc_roc_proto}"
       DEPENDS "${grpc_roc_proto}")
+
+include_directories(${CMAKE_SOURCE_DIR}/media/include)
 
 # Include generated *.pb.h files
 include_directories("${CMAKE_CURRENT_BINARY_DIR}")
@@ -57,29 +68,36 @@ target_link_libraries(grpc-roc-server
                       grpc_roc_proto
                       ${_REFLECTION}
                       ${_GRPC_GRPCPP}
-                      ${_PROTOBUF_LIBPROTOBUF}
-                      )
+                      ${_PROTOBUF_LIBPROTOBUF})
 
-
-if(APPLE)
+#if(APPLE)
     set(JUICE_LIBRARY LibJuice::LibJuice)
-else()
-    set(JUICE_LIBRARY juice-static)
-endif()
+#else()
+#    set(JUICE_LIBRARY juice-static)
+#endif()
 
 add_executable(grpc-roc-client
                client/main.cpp
                client/grpcclient.h
                client/grpcclient.cpp
                client/juiceclient.h
-               client/juiceclient.cpp)
+               client/juiceclient.cpp
+               media/include/sync.hpp
+               media/src/internal.hpp
+               media/src/receiver.cpp
+               media/src/sender.cpp)
+target_include_directories(grpc-roc-client PRIVATE
+                           ${GST_INCLUDE_DIRS})
+target_link_directories(grpc-roc-client PRIVATE
+                        ${GST_LIBRARY_DIRS})
+
 target_link_libraries(grpc-roc-client PRIVATE
                       grpc_roc_proto
+                      ${GST_LIBRARIES}
                       ${JUICE_LIBRARY}
                       ${_REFLECTION}
                       ${_GRPC_GRPCPP}
-                      ${_PROTOBUF_LIBPROTOBUF}
-                      )
+                      ${_PROTOBUF_LIBPROTOBUF})
 
 set(OTHER_FILES common/proto/grpc-roc.proto common/initial.txt README.md)
 

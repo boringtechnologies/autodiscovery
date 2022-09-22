@@ -4,6 +4,8 @@
 #include "grpcclient.h"
 #include "juiceclient.h"
 
+#include <sync.hpp>
+
 #include <iostream>
 
 //******************************************************************************
@@ -13,21 +15,17 @@ std::shared_ptr<rpcroc::GRpcClient>  grclient;
 typedef std::shared_ptr<rpcroc::JuiceClient> jcclient_ptr_t;
 std::map<std::string, jcclient_ptr_t> jcclients;
 
-//******************************************************************************
-//******************************************************************************
-//const char * stateString(const juice_state_t state)
-//{
-//    switch (state)
-//    {
-//        case JUICE_STATE_DISCONNECTED: return "JUICE_STATE_DISCONNECTED";
-//        case JUICE_STATE_GATHERING:    return "JUICE_STATE_GATHERING";
-//        case JUICE_STATE_CONNECTING:   return "JUICE_STATE_CONNECTING";
-//        case JUICE_STATE_CONNECTED:    return "JUICE_STATE_CONNECTED";
-//        case JUICE_STATE_COMPLETED:    return "JUICE_STATE_COMPLETED";
-//        case JUICE_STATE_FAILED:       return "JUICE_STATE_FAILED";
-//    }
-//    return "UNDEFINED";
-//}
+// sender
+media::ClockInfo                 mediaclock;
+media::MediaType                 mediatype = media::MediaType::Video;
+media::CaptureDevice             captureDevice;
+std::shared_ptr<media::Sender>   mediasender;
+
+// receiver
+media::PlaybackDevice            playbackDevice;
+media::ClockInfo                 receiverclock;
+std::chrono::duration<int>       delay;
+std::shared_ptr<media::Receiver> mediareceiver;
 
 //******************************************************************************
 //******************************************************************************
@@ -35,6 +33,42 @@ void onStateChanged(juice_agent_t * agent, juice_state_t state, void * user_ptr)
 {
     // std::cout << "onStateChanged " << state << " " << juice_state_to_string(state) << std::endl;
     std::cout << "P2P connection <" << state << "> " << juice_state_to_string(state) << std::endl;
+
+//    rpcroc::JuiceClient * caller = reinterpret_cast<rpcroc::JuiceClient *>(user_ptr);
+//    std::string id = caller->id();
+
+//    if (state == JUICE_STATE_COMPLETED)
+//    {
+//        std::cout << "P2P connection, " << id << " connected" << std::endl;
+
+//        if (!mediasender)
+//        {
+//            std::cout << "    no media" << std::endl;
+//        }
+//        else
+//        {
+//            if (jcclients.find(id) == jcclients.end() || !jcclients[id])
+//            {
+//                std::cout << "    no receiver named " << id << std::endl;
+//            }
+//            else
+//            {
+//                mediasender->addReceiver(id, [id](const uint8_t *data, size_t len)
+//                {
+//                    jcclients[id]->sendMessage(data, len);
+//                    // std::cout << len << " bytes to " << id << std::endl;
+//                });
+//            }
+//        }
+//    }
+//    else if (state == JUICE_STATE_DISCONNECTED)
+//    {
+//        if (mediasender)
+//        {
+//            mediasender->removeReceiver(id);
+//        }
+//        std::cout << "P2P connection, " << id << " disconnected" << std::endl;
+//    }
 }
 
 //******************************************************************************
@@ -62,8 +96,15 @@ void onGatheringDone(juice_agent_t * agent, void * user_ptr)
 //******************************************************************************
 void onRecv(juice_agent_t * agent, const char * data, size_t size, void * user_ptr)
 {
-    std::cout << "onRecv " << size << " bytes" << std::endl;
-    std::cout << "       " << std::string(data, size) << std::endl;
+    rpcroc::JuiceClient * caller = reinterpret_cast<rpcroc::JuiceClient *>(user_ptr);
+
+    // std::cout << size << " bytes from " << caller->id() << std::endl;
+    // std::cout << "    " << std::string(data, size) << std::endl;
+
+    if (mediareceiver)
+    {
+        mediareceiver->push(reinterpret_cast<const uint8_t *>(data), size);
+    }
 }
 
 //******************************************************************************
@@ -133,7 +174,11 @@ void onGrpcMessage(const std::string & from, const std::string & to, const std::
     else if (msg.rfind("JP2PD", 0) == 0)
     {
         // juice disconnect
-        std::cout << "juice disconnectd, " << msg.substr(6) << std::endl;
+        if (mediasender)
+        {
+            mediasender->removeReceiver(from);
+        }
+        std::cout << "juice disconnect from " << from << " reason: " << msg.substr(6) << std::endl;
         jcclients.erase(from);
     }
     else
@@ -159,6 +204,10 @@ void printHelp()
               << "  juiceState user_id" << std::endl
               << "  juiceSend user_id|message" << std::endl
               << "  juiceDisconnect user_id" << std::endl
+              << "  startstream device (/dev/video0 by default)" << std::endl
+              << "  translateto user_id" << std::endl
+              << "  receivestream user_id" << std::endl
+              << "  stopstream" << std::endl
               << "****************************************" << std::endl;
 }
 
@@ -249,9 +298,6 @@ int main(int argc, char * argv[])
                 continue;
             }
 
-//            jccpending.reset(new rpcroc::JuiceClient(v[0], &onStateChanged, &onCandidate, &onGatheringDone, &onRecv));
-//            jccpending->init();
-
             grclient.reset(new rpcroc::GRpcClient(v[0], group, grpc::CreateChannel(target, grpc::InsecureChannelCredentials())));
             grclient->subscribe(type, onGrpcMessage);
         }
@@ -279,18 +325,6 @@ int main(int argc, char * argv[])
                 std::cout << "not subscribed" << std::endl;
                 continue;
             }
-//            rpcroc::Peer p = grclient->getPeer(v[0]);
-//            if (p.id().empty())
-//            {
-//                std::cout << "peer not found, try get list" << std::endl;
-//                continue;
-//            }
-
-//            if (jcclients.count(p.id()))
-//            {
-//                std::cout << "already connected" << std::endl;
-//                continue;
-//            }
 
             jcclient_ptr_t ptr(new rpcroc::JuiceClient(v[0], &onStateChanged, &onCandidate, &onGatheringDone, &onRecv));
             ptr->init();
@@ -387,10 +421,112 @@ int main(int argc, char * argv[])
 
             grclient->sendMessage(v[0], v[1]);
         }
+        else if (command == "startstream")
+        {
+            captureDevice.name = "/dev/video0";
+
+            std::string params;
+            getline(std::cin, params);
+            std::vector<std::string> v = parseCommand(params);
+            if (v.size() < 1)
+            {
+                std::cout << captureDevice.name << " used by default" << std::endl;
+            }
+            else
+            {
+                captureDevice.name = v[0];
+            }
+
+            if (!grclient)
+            {
+                std::cout << "not subscribed" << std::endl;
+                continue;
+            }
+            if (mediasender)
+            {
+                std::cout << "already started" << std::endl;
+                continue;
+            }
+
+            mediasender.reset(new media::Sender(grclient->id(), mediatype, captureDevice, mediaclock));
+            mediasender->start();
+        }
+        else if (command == "translateto")
+        {
+            std::string params;
+            std::cin >> params;
+            std::vector<std::string> v = parseCommand(params);
+            if (v.size() < 1)
+            {
+                std::cout << "wrong params, try help" << std::endl;
+                continue;
+            }
+            if (!mediasender)
+            {
+                std::cout << "not started" << std::endl;
+                continue;
+            }
+            const std::string id = v[0];
+            if (jcclients.find(id) == jcclients.end() || !jcclients[id])
+            {
+                std::cout << "no receiver named " << id << std::endl;
+            }
+            else
+            {
+                mediasender->addReceiver(id, [id](const uint8_t *data, size_t len)
+                {
+                    jcclients[id]->sendMessage(data, len);
+                    // std::cout << len << " bytes to " << id << std::endl;
+                });
+            }
+        }
+        else if (command == "receivestream")
+        {
+            std::string params;
+            std::cin >> params;
+            std::vector<std::string> v = parseCommand(params);
+            if (v.size() < 1)
+            {
+                std::cout << "wrong params, try help" << std::endl;
+                continue;
+            }
+
+            if (mediareceiver)
+            {
+                std::cout << "already receiving" << std::endl;
+                continue;
+            }
+
+            std::string id = v[0];
+            mediareceiver.reset(new media::Receiver(id, mediatype, playbackDevice, receiverclock, delay));
+            mediareceiver->start();
+        }
+        else if (command == "stopstream")
+        {
+            if (mediasender)
+            {
+                mediasender->stop();
+                mediasender.reset();
+            }
+            if (mediareceiver)
+            {
+                mediareceiver->stop();
+                mediareceiver.reset();
+            }
+
+            std::cout << "all stopped" << std::endl;
+            continue;
+        }
         else
         {
             std::cout << "wrong, try help" << std::endl;
         }
+    }
+
+    if (mediasender)
+    {
+        mediasender->stop();
+        mediasender.reset();
     }
 
     for (const std::pair<std::string, jcclient_ptr_t> & it : jcclients)

@@ -132,6 +132,13 @@ void JuiceClient::sendMessage(const std::string & message)
 
 //******************************************************************************
 //******************************************************************************
+void JuiceClient::sendMessage(const uint8_t * data, const uint32_t size)
+{
+    juice_send(m_p->m_agent, reinterpret_cast<const char *>(data), size);
+}
+
+//******************************************************************************
+//******************************************************************************
 std::string JuiceClient::id() const
 {
     return m_p->m_id;
