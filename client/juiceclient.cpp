@@ -69,8 +69,8 @@ bool JuiceClient::init()
     m_p->m_turnServer.username = "testUser";
     m_p->m_turnServer.password = "testPassword";
 
-    m_p->m_config.turn_servers       = &m_p->m_turnServer;
-    m_p->m_config.turn_servers_count = 1;
+//    m_p->m_config.turn_servers       = &m_p->m_turnServer;
+//    m_p->m_config.turn_servers_count = 1;
 
     m_p->m_config.cb_state_changed  = m_onStateChangedHandler;
     m_p->m_config.cb_candidate      = m_onCandidateHandler;
