@@ -3,7 +3,7 @@ grpc-roc demo client-server
 
 simple build flow
 
-install libjuice
+### install libjuice
 
 ```
 git clone https://github.com/paullouisageneau/libjuice.git
@@ -16,7 +16,7 @@ sudo make install
 sudo cp libjuice-static.a /usr/local/lib/
 ```
 
-install gRPC as described https://github.com/grpc/grpc/blob/master/BUILDING.md
+### install gRPC as described https://github.com/grpc/grpc/blob/master/BUILDING.md
 
 ```
 $ [sudo] apt-get install build-essential autoconf libtool pkg-config
@@ -37,7 +37,21 @@ $ make
 $ [sudo] make install
 ```
 
-build sources
+### For media
+
+### Debian/Ubuntu Linux
+
+```sh
+$ sudo apt install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstreamer-plugins-bad1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav gstreamer1.0-tools gstreamer1.0-x gstreamer1.0-alsa gstreamer1.0-gl gstreamer1.0-gtk3 gstreamer1.0-qt5 gstreamer1.0-pulseaudio gstreamer1.0-pulseaudio
+```
+
+### macOS
+
+```sh
+$ brew install gstreamer gst-plugins-{base,good,bad,ugly} gst-libav
+```
+
+### build sources
 
 ```
 $ git clone https://github.com/Boring-App/autodiscovery.git
