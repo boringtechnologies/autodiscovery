@@ -96,15 +96,7 @@ void sender_rtcp_recv_thread(media::Sender &sndr, const std::string &addr,
             continue;
         }
 
-        std::cout << "Received " << ret << " from "
-                  << inet_ntoa(client_addr.sin_addr) << ":"
-                  << ntohs(client_addr.sin_port) << std::endl;
-        std::cout << "-----------------------------------" << std::endl;
-        // for (const auto &item : client_msg) {
-        //     std::cout << std::hex << int(item);
-        // }
         sndr.push(client_msg, ret);
-        // std::cout << "-----------------------------------" << std::endl;
     }
 
     close(sock);
