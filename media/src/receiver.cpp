@@ -1,3 +1,5 @@
+#include <gst/app/app.h>
+
 #include <sync.hpp>
 
 #include "internal.hpp"
@@ -30,6 +32,32 @@ static gboolean bus_callback(GstBus *bus, GstMessage *msg, gpointer data) {
     return TRUE;
 }
 
+static GstFlowReturn new_sample(GstAppSink *sink, gpointer userdata) {
+    GstSample *sample;
+    media::Receiver *self = static_cast<media::Receiver *>(userdata);
+
+    /* Retrieve the buffer */
+    sample = gst_app_sink_pull_sample(sink);
+    if (sample) {
+        /* The only thing we do in this example is print a * to indicate a
+         * received buffer */
+        GstBuffer *buf = gst_sample_get_buffer(sample);
+        GstMapInfo info;
+        gst_buffer_map(buf, &info, GST_MAP_READ);
+
+        if (self->write_cb) {
+            self->write_cb((const uint8_t *)info.data, info.size);
+        }
+
+        gst_buffer_unmap(buf, &info);
+
+        gst_sample_unref(sample);
+        return GST_FLOW_OK;
+    }
+
+    return GST_FLOW_ERROR;
+}
+
 static void rtpbin_pad_padded(GstElement *ele, GstPad *pad, gpointer userdata) {
     gchar *padname = gst_pad_get_name(pad);
     gchar *prefix = g_strdup_printf("recv_rtp_src_");
@@ -45,7 +73,7 @@ static void rtpbin_pad_padded(GstElement *ele, GstPad *pad, gpointer userdata) {
     g_free(padname);
 }
 
-GstElement* get_audio_device(const std::string &id) {
+static GstElement *get_audio_device(const std::string &id) {
     GstElement *sink;
 
 #if defined(__linux__)
@@ -62,11 +90,11 @@ GstElement* get_audio_device(const std::string &id) {
 
 media::Receiver::Receiver(const std::string &id, MediaType type,
                           const PlaybackDevice &device, const ClockInfo &clock,
-                          std::chrono::duration<int> delay, bool synchronize)
-    : thread(nullptr) {
+                          std::chrono::duration<int> delay, bool synchronize,
+                          media::WriteCallback write_cb)
+    : thread(nullptr), write_cb(write_cb) {
     GstBus *bus;
-    GstElement *rtpbin, *depayloader, *decoder, *sink;
-    GstElement *udpsink;
+    GstElement *rtpbin, *depayloader, *decoder, *sink, *appsink;
     gst_init(nullptr, nullptr);
 
     loop = g_main_loop_new(nullptr, FALSE);
@@ -100,11 +128,13 @@ media::Receiver::Receiver(const std::string &id, MediaType type,
                                  "90000,encoding-name=(string)VP8,payload=101"),
             nullptr);
     }
-    MAKE_ELEMENT(udpsink, "udpsink", ("rx-" + id + "-udpsink-rtcp").c_str());
 
-    // TODO remove the below workaround using id as port number.
-    int port = atoi(id.c_str());
-    g_object_set(udpsink, "host", "0.0.0.0", "port", port + 1, NULL);
+    MAKE_ELEMENT(appsink, "appsink", ("rx-" + id + "-appsink-rtcp").c_str());
+    GstAppSinkCallbacks callbacks = {0};
+    callbacks.new_sample = new_sample;
+    gst_app_sink_set_callbacks(GST_APP_SINK(appsink), &callbacks, this, NULL);
+    g_object_set(appsink, "emit-signals", FALSE, nullptr);
+
     g_signal_connect(rtpbin, "pad-added", G_CALLBACK(rtpbin_pad_padded),
                      depayloader);
     if (synchronize) {
@@ -123,10 +153,10 @@ media::Receiver::Receiver(const std::string &id, MediaType type,
     gst_object_unref(bus);
 
     gst_bin_add_many(GST_BIN(pipeline), appsrc, rtpbin, depayloader, decoder,
-                     sink, udpsink, nullptr);
+                     sink, appsink, nullptr);
 
     gst_pad_link(src_pad, recv_rtp_sink_pad);
-    gst_element_link_pads(rtpbin, "send_rtcp_src_%u", udpsink, "sink");
+    gst_element_link_pads(rtpbin, "send_rtcp_src_%u", appsink, "sink");
     if (!gst_element_link_many(depayloader, decoder, sink, nullptr)) {
         g_printerr("Failed to link the elements\n");
         return;

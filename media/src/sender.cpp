@@ -217,7 +217,6 @@ static void rtpbin_pad_padded(GstElement *ele, GstPad *pad, gpointer userdata) {
 void media::Sender::addReceiver(const std::string &id,
                                 media::WriteCallback write_cb) {
     GstElement *appsink, *rtpbin, *funnel;
-    GstElement *udpsrc;
     GstElement *bin = gst_bin_get_by_name(GST_BIN(pipeline), id.c_str());
 
     if (bin != nullptr) {
@@ -231,7 +230,6 @@ void media::Sender::addReceiver(const std::string &id,
     MAKE_ELEMENT(rtpbin, "rtpbin", (id + "-publisher-rtpbin").c_str());
     MAKE_ELEMENT(funnel, "funnel", (id + "-publisher-funnel").c_str());
     MAKE_ELEMENT(appsink, "appsink", (id + "-publisher-appsink").c_str());
-    MAKE_ELEMENT(udpsrc, "udpsrc", "udpsrc");
     MAKE_ELEMENT(rtcp_appsrc, "appsrc",
                  (id + "-publisher-rtcp-appsrc").c_str());
 
@@ -258,20 +256,20 @@ void media::Sender::addReceiver(const std::string &id,
                      funnel);
 
     guint port = atoi(id.c_str()) + 1;
-    g_object_set(udpsrc, "port", port, NULL);
     g_object_set(rtcp_appsrc, "format", GST_FORMAT_TIME, nullptr);
     g_object_set(rtcp_appsrc, "do-timestamp", true, nullptr);
     g_object_set(rtcp_appsrc, "is-live", true, nullptr);
 
-    gst_bin_add_many(GST_BIN(bin), rtpbin, funnel, appsink, udpsrc, nullptr);
+    gst_bin_add_many(GST_BIN(bin), rtpbin, funnel, appsink, rtcp_appsrc,
+                     nullptr);
 
     GstPad *rtp_send_sinkpad =
         gst_element_get_request_pad(rtpbin, "send_rtp_sink_%u");
     if (!gst_element_link_pads(rtpbin, "send_rtcp_src_%u", funnel, "sink_%u"))
         g_printerr("Failed to link rtcp src and funnel");
 
-    if (!gst_element_link_pads(udpsrc, "src", rtpbin, "recv_rtcp_sink_%u"))
-        g_printerr("Failed to link udpsrc and rtcp rcv sink");
+    if (!gst_element_link_pads(rtcp_appsrc, "src", rtpbin, "recv_rtcp_sink_%u"))
+        g_printerr("Failed to link rtcp_appsrc and rtcp rcv sink");
 
     if (!gst_element_link_many(funnel, appsink, nullptr))
         g_print("failed to link funnel and appsink");
