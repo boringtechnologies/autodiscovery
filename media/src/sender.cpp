@@ -107,8 +107,7 @@ media::Sender::Sender(const std::string &id, media::MediaType type,
             "rtpvp8pay", (id + "-publisher-videopayload").c_str());
         g_object_set(payloader, "pt", 101, NULL);
     }
-    // TODO: Add a muxer when we want both audio and video from a single
-    // publisher
+
     MAKE_ELEMENT(tee, "tee", (id + "-publisher-tee").c_str());
     MAKE_ELEMENT(queue, "queue", (id + "-publisher-queue").c_str());
     MAKE_ELEMENT(fakesink, "fakesink", (id + "-publisher-fakesink").c_str());
