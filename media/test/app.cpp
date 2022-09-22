@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <sync.hpp>
 #include <thread>
@@ -28,6 +29,31 @@ static gboolean break_handler(gpointer userdata) {
     return TRUE;
 }
 
+static int open_socket(const std::string &addr, uint16_t port = 0) {
+    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+
+    if (sock < 0) {
+        std::cerr << "Error creating socket" << std::endl;
+        return -1;
+    }
+
+    if (port > 0) {
+        struct sockaddr_in server_addr;
+
+        server_addr.sin_family = AF_INET;
+        server_addr.sin_port = htons(port);
+        server_addr.sin_addr.s_addr = inet_addr(addr.c_str());
+
+        if (bind(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) <
+            0) {
+            std::cerr << "Couldn't bind to the port\n" << std::endl;
+            return -1;
+        }
+    }
+
+    return sock;
+}
+
 static void write_callback(int sock, const std::string &addr,
                            const uint16_t port, const uint8_t *payload,
                            size_t len) {
@@ -43,13 +69,46 @@ static void write_callback(int sock, const std::string &addr,
         std::cout << "Failed to send buf" << std::endl;
     }
     if (len != ret)
-        std::cout << "(tried, send) " << len << "," << ret << " bytes"
-                  << std::endl;
+        std::cout << strerror(errno) << "(tried, send) " << len << "," << ret
+                  << " bytes" << std::endl;
 }
 
-void sender_cli(media::Sender &sndr, int sock) {
+void sender_rtcp_recv_thread(media::Sender &sndr, const std::string &addr,
+                             uint16_t port) {
+    int sock;
+    struct sockaddr_in server_addr, client_addr;
+    uint8_t client_msg[2000] = {0};
+    struct timeval read_timeout;
+    socklen_t client_struct_length = sizeof(client_addr);
+
+    sock = open_socket(addr, port);
+    if (sock < 0) {
+        std::cerr << "Error creating socket : " << errno << std::endl;
+        return;
+    }
+
+    while (true) {
+        int ret = 0;
+        if ((ret = recvfrom(sock, client_msg, sizeof(client_msg), 0,
+                            (struct sockaddr *)&client_addr,
+                            &client_struct_length)) < 0) {
+            std::cerr << "Couldnt receive buffer from the client \n";
+            continue;
+        }
+
+        sndr.push(client_msg, ret);
+    }
+
+    close(sock);
+}
+
+void sender_cli(media::Sender &sndr) {
+    std::map<std::string, std::thread> rtcp_threads;
+    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+
     while (true) {
         int input;
+        std::cout << std::endl << std::endl;
         std::cout << "Please provide input" << std::endl;
         std::cout << USER_OPTS << std::endl;
         std::cin >> input;
@@ -58,57 +117,67 @@ void sender_cli(media::Sender &sndr, int sock) {
                 std::string host;
                 uint16_t port;
                 std::string rcvr_id;
+                std::cout << std::endl << std::endl;
                 std::cout << "provide host port rcvrid" << std::endl;
                 std::cin >> host >> port >> rcvr_id;
                 sndr.addReceiver(rcvr_id, [=](const uint8_t *data, size_t len) {
                     write_callback(sock, host, port, data, len);
                 });
+
+                // Recieve RTCP packets on all interfaces and on receiver
+                // port+1, just incase sender and receiver running on same
+                // machine
+                std::string sndr_addr = "0.0.0.0";
+                rtcp_threads[rcvr_id] =
+                    std::thread(sender_rtcp_recv_thread, std::ref(sndr),
+                                sndr_addr, port + 1);
             } break;
             case 2: {
                 std::string rcvr_id;
                 std::cout << "provide rcvrid" << std::endl;
                 std::cin >> rcvr_id;
                 sndr.removeReceiver(rcvr_id);
+
+                // TODO: erase causes a SIGABRT, revisit later
+                // rtcp_threads.erase(rcvr_id);
             } break;
             case 3:
                 sndr.stop();
+                close(sock);
                 return;
             default:
-                std::cout << "invalid command" << std::endl;
-                continue;
+                std::cout << std::endl << std::endl;
+                std::cout << "!!!!!!!!!!!!!!!!!" << std::endl;
+                std::cout << "invalid command!" << std::endl;
+                std::cout << "!!!!!!!!!!!!!!!!!" << std::endl;
+                std::cout << std::endl << std::endl;
+                std::cin.clear();
+                std::cin.ignore(std::numeric_limits<std::streamsize>::max(),
+                                '\n');
+                break;
         }
     }
 }
 
 void receiver_thread(media::Receiver &rx, const std::string &addr,
                      uint16_t port) {
-    int sock_desc;
-    struct sockaddr_in server_addr, client_addr;
+    int sock;
     uint8_t client_msg[2000] = {0};
     struct timeval read_timeout;
+    struct sockaddr_in client_addr;
     socklen_t client_struct_length = sizeof(client_addr);
 
-    sock_desc = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-
-    if (sock_desc < 0) {
-        std::cerr << "Error creating socket" << std::endl;
+    sock = open_socket(addr, port);
+    if (sock < 0) {
         return;
     }
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(port);
-    server_addr.sin_addr.s_addr = inet_addr(addr.c_str());
 
-    if (bind(sock_desc, (struct sockaddr *)&server_addr, sizeof(server_addr)) <
-        0) {
-        std::cerr << "Couldn't bind to the port\n" << std::endl;
-        return;
-    }
     while (true) {
         int ret = 0;
-        if ((ret = recvfrom(sock_desc, client_msg, sizeof(client_msg), 0,
+        if ((ret = recvfrom(sock, client_msg, sizeof(client_msg), 0,
                             (struct sockaddr *)&client_addr,
                             &client_struct_length)) < 0) {
-            std::cerr << "Couldnt receiver from client \n";
+            std::cerr << "Couldnt receive buffer from the client \n";
             continue;
         }
 
@@ -122,11 +191,11 @@ void receiver_thread(media::Receiver &rx, const std::string &addr,
         rx.push(client_msg, ret);
         // std::cout << "-----------------------------------" << std::endl;
     }
-    close(sock_desc);
+    close(sock);
 }
 
 int main(int argc, char **argv) {
-    media::ClockInfo clock;
+    media::ClockInfo clock = {"66.228.38.186", 10000};
     media::MediaType type = media::MediaType::Video;
     media::CaptureDevice dev;
 
@@ -158,27 +227,41 @@ int main(int argc, char **argv) {
 
     char mode = argv[1][0];
     if (mode == 's') {
-        int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
         media::Sender sndr("sender", type, dev, clock);
         sndr.start();
 
-        std::thread cli(sender_cli, std::ref(sndr), sock);
+        std::thread cli(sender_cli, std::ref(sndr));
         cli.join();
-        close(sock);
 
     } else if (mode == 'r') {
+        std::string sender_addr;
         uint16_t port;
         media::PlaybackDevice dev;
-        media::ClockInfo clock;
         std::chrono::duration<int> delay;
+        bool sync = true;
+        std::string inp;
         loop = g_main_loop_new(NULL, false);
 
-        std::cout << "Using default address 0.0.0.0. please provide udp port "
-                  << std::endl;
+        std::cout << "Please provide sender address" << std::endl;
+        std::cin >> sender_addr;
+
+        std::cout
+            << "Using default listen address 0.0.0.0. please provide udp port "
+            << std::endl;
         std::cin >> port;
+
         std::string addr = "0.0.0.0";
 
-        media::Receiver recvr("receiver", type, dev, clock, delay);
+        int rtcp_sock = open_socket(addr);
+        if (rtcp_sock < 0) {
+            return -1;
+        }
+
+        media::Receiver recvr(
+            std::to_string(port).c_str(), type, dev, clock, delay, sync,
+            [=](const uint8_t *data, size_t len) {
+                write_callback(rtcp_sock, sender_addr, port + 1, data, len);
+            });
 
         recvr.start();
         std::thread th(receiver_thread, std::ref(recvr), addr, port);
@@ -188,12 +271,12 @@ int main(int argc, char **argv) {
 
         // TODO cancel 'th' thread gracefully
         g_main_loop_run(loop);
+        close(rtcp_sock);
         recvr.stop();
     } else {
         std::cerr << "Invalid mode!!" << std::endl;
         std::cerr << "Usage:" << std::endl;
         std::cerr << argv[0] << APP_USAGE << std::endl;
     }
-
     std::cout << "exiting..";
 }
