@@ -205,7 +205,7 @@ void printHelp()
               << "  juiceSend user_id|message" << std::endl
               << "  juiceDisconnect user_id" << std::endl
               << "  startstream device (/dev/video0 by default)" << std::endl
-              << "  translateto user_id" << std::endl
+              << "  transmitto user_id" << std::endl
               << "  receivestream user_id" << std::endl
               << "  stopstream" << std::endl
               << "****************************************" << std::endl;
@@ -451,7 +451,7 @@ int main(int argc, char * argv[])
             mediasender.reset(new media::Sender(grclient->id(), mediatype, captureDevice, mediaclock));
             mediasender->start();
         }
-        else if (command == "translateto")
+        else if (command == "transmitto")
         {
             std::string params;
             std::cin >> params;
