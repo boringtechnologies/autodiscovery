@@ -27,6 +27,7 @@ pkg_check_modules(GST REQUIRED
         glib-2.0
         gstreamer-1.0
         gstreamer-app-1.0
+        gstreamer-net-1.0
 )
 
 # Proto files

@@ -16,14 +16,14 @@ typedef std::shared_ptr<rpcroc::JuiceClient> jcclient_ptr_t;
 std::map<std::string, jcclient_ptr_t> jcclients;
 
 // sender
-media::ClockInfo                 mediaclock;
+media::ClockInfo                 mediaclock = {"66.228.38.186", 10000};
 media::MediaType                 mediatype = media::MediaType::Video;
 media::CaptureDevice             captureDevice;
 std::shared_ptr<media::Sender>   mediasender;
 
 // receiver
 media::PlaybackDevice            playbackDevice;
-media::ClockInfo                 receiverclock;
+media::ClockInfo                 receiverclock = {"66.228.38.186", 10000};
 std::chrono::duration<int>       delay;
 std::shared_ptr<media::Receiver> mediareceiver;
 
@@ -104,6 +104,9 @@ void onRecv(juice_agent_t * agent, const char * data, size_t size, void * user_p
     if (mediareceiver)
     {
         mediareceiver->push(reinterpret_cast<const uint8_t *>(data), size);
+    } else if (mediasender)
+    {
+        mediasender->push(reinterpret_cast<const uint8_t *>(data), size);
     }
 }
 
@@ -498,7 +501,13 @@ int main(int argc, char * argv[])
             }
 
             std::string id = v[0];
-            mediareceiver.reset(new media::Receiver(id, mediatype, playbackDevice, receiverclock, delay));
+            bool synchronize = true;
+            mediareceiver.reset(new media::Receiver(id, mediatype, playbackDevice, receiverclock, delay,synchronize,
+                        [id](const uint8_t *data, size_t len)
+                        {
+                            jcclients[id]->sendMessage(data, len);
+                            // std::cout << len << " bytes to " << id << std::endl;
+                        }));
             mediareceiver->start();
         }
         else if (command == "stopstream")
