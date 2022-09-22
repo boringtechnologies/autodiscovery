@@ -73,8 +73,8 @@ static void write_callback(int sock, const std::string &addr,
                   << " bytes" << std::endl;
 }
 
-void sender_rtcp_recv_thread(media::Sender &sndr, const std::string &addr,
-                             uint16_t port) {
+void sender_rtcp_recv_thread(media::Sender &sndr, const std::string &id,
+                             const std::string &addr, uint16_t port) {
     int sock;
     struct sockaddr_in server_addr, client_addr;
     uint8_t client_msg[2000] = {0};
@@ -96,7 +96,7 @@ void sender_rtcp_recv_thread(media::Sender &sndr, const std::string &addr,
             continue;
         }
 
-        sndr.push(client_msg, ret);
+        sndr.push(id, client_msg, ret);
     }
 
     close(sock);
@@ -130,7 +130,7 @@ void sender_cli(media::Sender &sndr) {
                 std::string sndr_addr = "0.0.0.0";
                 rtcp_threads[rcvr_id] =
                     std::thread(sender_rtcp_recv_thread, std::ref(sndr),
-                                sndr_addr, port + 1);
+                                rcvr_id, sndr_addr, port + 1);
             } break;
             case 2: {
                 std::string rcvr_id;

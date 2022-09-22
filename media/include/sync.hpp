@@ -62,7 +62,7 @@ class Sender {
     std::unique_ptr<std::thread> thread;
     GMainLoop *loop;
     guint bus_watch_id;
-    GstElement *pipeline, *tee, *rtcp_appsrc;
+    GstElement *pipeline, *tee;
 
    public:
     // The constructor takes:
@@ -103,10 +103,10 @@ class Sender {
 
     // FIXME: Can we make this private?
     std::map<std::string, WriteCallback> write_cbs;
-    // Push the data to the appsrc
+    // Push the data to the appsrc for the given receiver id
     // returns TRUE is push is successful
     // returns FALSE in case of an error
-    bool push(const uint8_t *payload, size_t len);
+    bool push(const std::string &id, const uint8_t *payload, size_t len);
 };
 
 struct PlaybackDevice {

@@ -70,8 +70,8 @@ media::Sender::Sender(const std::string &id, media::MediaType type,
                       const media::ClockInfo &clock)
     : thread(nullptr), write_cbs() {
     GstBus *bus;
-    GstElement *source, *conv, *rate, *capsf, *encoder, *payloader,
-        *queue, *fakesink;
+    GstElement *source, *conv, *rate, *capsf, *encoder, *payloader, *queue,
+        *fakesink;
     gst_init(nullptr, nullptr);
 
     loop = g_main_loop_new(nullptr, FALSE);
@@ -113,11 +113,11 @@ media::Sender::Sender(const std::string &id, media::MediaType type,
     bus_watch_id = gst_bus_add_watch(bus, bus_callback, loop);
     gst_object_unref(bus);
 
-    gst_bin_add_many(GST_BIN(pipeline), source, conv, rate, capsf,
-                     encoder, payloader, tee, queue, fakesink, nullptr);
+    gst_bin_add_many(GST_BIN(pipeline), source, conv, rate, capsf, encoder,
+                     payloader, tee, queue, fakesink, nullptr);
 
-    if (!gst_element_link_many(source, conv, rate, capsf, encoder,
-                               payloader, tee, queue, fakesink, nullptr)) {
+    if (!gst_element_link_many(source, conv, rate, capsf, encoder, payloader,
+                               tee, queue, fakesink, nullptr)) {
         g_printerr("failed to link the elements\n");
         return;
     }
@@ -212,7 +212,7 @@ static void rtpbin_pad_padded(GstElement *ele, GstPad *pad, gpointer userdata) {
 
 void media::Sender::addReceiver(const std::string &id,
                                 media::WriteCallback write_cb) {
-    GstElement *appsink, *rtpbin, *funnel;
+    GstElement *appsink, *rtpbin, *funnel, *rtcp_appsrc;
     GstElement *bin = gst_bin_get_by_name(GST_BIN(pipeline), id.c_str());
 
     if (bin != nullptr) {
@@ -343,8 +343,10 @@ void media::Sender::removeReceiver(const std::string &id) {
     gst_object_unref(tee_src_pad);
 }
 
-bool media::Sender::push(const uint8_t *payload, size_t len) {
+bool media::Sender::push(const std::string &id, const uint8_t *payload,
+                         size_t len) {
     GstState cur_state = GST_STATE_NULL, pending_state;
+    GstElement *rtcp_appsrc;
     GstBuffer *buf;
     GstMapInfo info;
     GstFlowReturn ret;
@@ -352,6 +354,9 @@ bool media::Sender::push(const uint8_t *payload, size_t len) {
     gst_element_get_state(pipeline, &cur_state, &pending_state, 0);
     if (cur_state != GST_STATE_PAUSED && cur_state != GST_STATE_PLAYING)
         return true;
+
+    rtcp_appsrc = gst_bin_get_by_name(GST_BIN(pipeline),
+                                      (id + "-publisher-rtcp-appsrc").c_str());
 
     buf = gst_buffer_new_allocate(nullptr, len, nullptr);
     if (buf == nullptr) {
