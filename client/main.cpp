@@ -84,10 +84,10 @@ void onCandidate(juice_agent_t * agent, const char * sdp, void * user_ptr)
 
     rpcroc::JuiceClient * caller = reinterpret_cast<rpcroc::JuiceClient *>(user_ptr);
 
-//    if (grclient)
-//    {
-//        grclient->sendMessage(caller->id(), sdp);
-//    }
+    if (grclient)
+    {
+        grclient->sendMessage(caller->id(), std::string("JP2PC ") + sdp);
+    }
 }
 
 //******************************************************************************
