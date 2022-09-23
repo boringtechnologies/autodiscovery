@@ -305,6 +305,20 @@ int main(int argc, char * argv[])
         {
             if (grclient)
             {
+                // disconnect all p2p connections
+                for (const std::pair<std::string, jcclient_ptr_t> & item : jcclients)
+                {
+                    if (item.second)
+                    {
+                        if (!grclient->p2pDisconnect(item.first, "unsubscribe"))
+                        {
+                            std::cout << "p2p disconnect error - " << item.first << std::endl;
+                        }
+
+                        item.second->disconnect();
+                    }
+                    jcclients.erase(item.first);
+                }
                 // grclient->unsubscribe();
                 grclient.reset();
             }
@@ -395,7 +409,7 @@ int main(int argc, char * argv[])
 
             if (!grclient->p2pDisconnect(v[0], "user request"))
             {
-                std::cout << "p2p init error" << std::endl;
+                std::cout << "p2p disconnect error" << std::endl;
                 continue;
             }
 
