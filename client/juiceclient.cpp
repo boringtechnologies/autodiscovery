@@ -89,7 +89,7 @@ JuiceClient::JuiceClient(const std::string & id,
                     }
                 }
 
-                if (m_p->m_agent && juice_get_state(m_p->m_agent) == JUICE_STATE_COMPLETED)
+                if (m_p->m_agent && juice_get_state(m_p->m_agent) >= JUICE_STATE_CONNECTED)
                 {
                     // send ping, raw message
                     sendMessage(reinterpret_cast<const uint8_t *>(pingmsg.c_str()), pingmsg.size());
