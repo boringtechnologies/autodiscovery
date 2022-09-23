@@ -1,3 +1,5 @@
+#include <gst/app/app.h>
+
 #include <sync.hpp>
 
 #include "internal.hpp"
@@ -30,6 +32,32 @@ static gboolean bus_callback(GstBus *bus, GstMessage *msg, gpointer data) {
     return TRUE;
 }
 
+static GstFlowReturn new_sample(GstAppSink *sink, gpointer userdata) {
+    GstSample *sample;
+    media::Receiver *self = static_cast<media::Receiver *>(userdata);
+
+    /* Retrieve the buffer */
+    sample = gst_app_sink_pull_sample(sink);
+    if (sample) {
+        /* The only thing we do in this example is print a * to indicate a
+         * received buffer */
+        GstBuffer *buf = gst_sample_get_buffer(sample);
+        GstMapInfo info;
+        gst_buffer_map(buf, &info, GST_MAP_READ);
+
+        if (self->write_cb) {
+            self->write_cb((const uint8_t *)info.data, info.size);
+        }
+
+        gst_buffer_unmap(buf, &info);
+
+        gst_sample_unref(sample);
+        return GST_FLOW_OK;
+    }
+
+    return GST_FLOW_ERROR;
+}
+
 static void rtpbin_pad_padded(GstElement *ele, GstPad *pad, gpointer userdata) {
     gchar *padname = gst_pad_get_name(pad);
     gchar *prefix = g_strdup_printf("recv_rtp_src_");
@@ -45,31 +73,43 @@ static void rtpbin_pad_padded(GstElement *ele, GstPad *pad, gpointer userdata) {
     g_free(padname);
 }
 
+static GstElement *get_audio_device(const std::string &id) {
+    GstElement *sink;
+
+#if defined(__linux__)
+    MAKE_ELEMENT(sink, "pulsesink", ("rx-" + id + "-sink").c_str());
+#elif defined(__APPLE__)
+    MAKE_ELEMENT(sink, "osxaudiosink", ("rx-" + id + "-sink").c_str());
+#endif
+
+    g_object_set(sink, "drift-tolerance", 10000, NULL);
+    g_object_set(sink, "alignment-threshold", 10000, NULL);
+
+    return sink;
+}
+
 media::Receiver::Receiver(const std::string &id, MediaType type,
                           const PlaybackDevice &device, const ClockInfo &clock,
-                          std::chrono::duration<int> delay)
-    : thread(nullptr) {
+                          std::chrono::duration<int> delay, bool synchronize,
+                          media::WriteCallback write_cb)
+    : thread(nullptr), write_cb(write_cb) {
     GstBus *bus;
-    GstElement *rtpbin, *depayloader, *decoder, *sink;
+    GstElement *rtpbin, *depayloader, *decoder, *sink, *appsink;
     gst_init(nullptr, nullptr);
 
     loop = g_main_loop_new(nullptr, FALSE);
 
-    pipeline = gst_pipeline_new(id.c_str());
-
-    // MAKE_ELEMENT(udpsrc, "udpsrc", "receiver-udpsrc");
-    // g_object_set(udpsrc, "port", receiver.port, NULL);
-    // if (!receiver.address.empty())
-    //     g_object_set(udpsrc, "address", receiver.address.c_str(), NULL);
-    MAKE_ELEMENT(appsrc, "appsrc", "receiver-appsrc");
+    pipeline = gst_pipeline_new(("rx-" + id).c_str());
+    MAKE_ELEMENT(appsrc, "appsrc", ("rx-" + id + "-appsrc").c_str());
     g_object_set(appsrc, "format", GST_FORMAT_TIME, nullptr);
     g_object_set(appsrc, "do-timestamp", true, nullptr);
     g_object_set(appsrc, "is-live", true, nullptr);
-    MAKE_ELEMENT(rtpbin, "rtpbin", "receiver-rtpbin");
+    MAKE_ELEMENT(rtpbin, "rtpbin", ("rx-" + id + "-rtpbin").c_str());
     if (type == media::MediaType::Audio) {
-        MAKE_ELEMENT(depayloader, "rtpopusdepay", "receiver-depay");
-        MAKE_ELEMENT(decoder, "opusdec", "receiver-dec");
-        MAKE_ELEMENT(sink, "autoaudiosink", "receiver-sink");
+        MAKE_ELEMENT(depayloader, "rtpopusdepay",
+                     ("rx-" + id + "-depay").c_str());
+        MAKE_ELEMENT(decoder, "opusdec", ("rx-" + id + "-dec").c_str());
+        sink = get_audio_device(id);
         g_object_set(
             appsrc, "caps",
             gst_caps_from_string("application/"
@@ -77,9 +117,10 @@ media::Receiver::Receiver(const std::string &id, MediaType type,
                                  "48000,encoding-name=(string)OPUS,payload=97"),
             nullptr);
     } else if (type == media::MediaType::Video) {
-        MAKE_ELEMENT(depayloader, "rtpvp8depay", "receiver-depay");
-        MAKE_ELEMENT(decoder, "vp8dec", "receiver-dec");
-        MAKE_ELEMENT(sink, "autovideosink", "receiver-sink");
+        MAKE_ELEMENT(depayloader, "rtpvp8depay",
+                     ("rx-" + id + "-depay").c_str());
+        MAKE_ELEMENT(decoder, "vp8dec", ("rx-" + id + "-dec").c_str());
+        MAKE_ELEMENT(sink, "autovideosink", ("rx-" + id + "-sink").c_str());
         g_object_set(
             appsrc, "caps",
             gst_caps_from_string("application/"
@@ -87,9 +128,21 @@ media::Receiver::Receiver(const std::string &id, MediaType type,
                                  "90000,encoding-name=(string)VP8,payload=101"),
             nullptr);
     }
+
+    MAKE_ELEMENT(appsink, "appsink", ("rx-" + id + "-appsink-rtcp").c_str());
+    GstAppSinkCallbacks callbacks = {0};
+    callbacks.new_sample = new_sample;
+    gst_app_sink_set_callbacks(GST_APP_SINK(appsink), &callbacks, this, NULL);
+    g_object_set(appsink, "emit-signals", FALSE, nullptr);
+
     g_signal_connect(rtpbin, "pad-added", G_CALLBACK(rtpbin_pad_padded),
                      depayloader);
-    g_object_set(rtpbin, "buffer-mode", 0, NULL);
+    if (synchronize) {
+        g_object_set(rtpbin, "buffer-mode", 4, "ntp-time-source", 3, "ntp-sync",
+                     TRUE, nullptr);
+    } else {
+        g_object_set(rtpbin, "buffer-mode", 0, nullptr);
+    }
 
     GstPad *src_pad = gst_element_get_static_pad(appsrc, "src");
     GstPad *recv_rtp_sink_pad =
@@ -100,12 +153,29 @@ media::Receiver::Receiver(const std::string &id, MediaType type,
     gst_object_unref(bus);
 
     gst_bin_add_many(GST_BIN(pipeline), appsrc, rtpbin, depayloader, decoder,
-                     sink, NULL);
-    gst_pad_link(src_pad, recv_rtp_sink_pad);
+                     sink, appsink, nullptr);
 
-    if (!gst_element_link_many(depayloader, decoder, sink, NULL)) {
+    gst_pad_link(src_pad, recv_rtp_sink_pad);
+    gst_element_link_pads(rtpbin, "send_rtcp_src_%u", appsink, "sink");
+    if (!gst_element_link_many(depayloader, decoder, sink, nullptr)) {
         g_printerr("Failed to link the elements\n");
         return;
+    }
+
+    if (synchronize) {
+        GstClock *net_clock = gst_net_client_clock_new(
+            nullptr, clock.address.c_str(), clock.port, 0);
+        if (net_clock == NULL) {
+            g_print("Failed to create net clock client\n");
+            return;
+        }
+
+        /* Wait for the clock to stabilise */
+        gst_clock_wait_for_sync(net_clock, GST_CLOCK_TIME_NONE);
+        gst_pipeline_use_clock(GST_PIPELINE(pipeline), net_clock);
+        /* Set this high enough so that it's higher than the minimum latency
+         * on all receivers */
+        gst_pipeline_set_latency(GST_PIPELINE(pipeline), 500 * GST_MSECOND);
     }
 }
 

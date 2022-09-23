@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.5)
 
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS True)
 
 project(grpc-roc LANGUAGES CXX)
 
@@ -26,6 +27,7 @@ pkg_check_modules(GST REQUIRED
         glib-2.0
         gstreamer-1.0
         gstreamer-app-1.0
+        gstreamer-net-1.0
 )
 
 # Proto files
