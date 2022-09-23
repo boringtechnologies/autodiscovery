@@ -195,8 +195,8 @@ bool JuiceClient::init()
     m_p->m_config.turn_servers       = &m_p->m_turnServer;
     m_p->m_config.turn_servers_count = 1;
 
-    m_p->m_config.local_port_range_begin = 50050;
-    m_p->m_config.local_port_range_end   = 50050;
+//    m_p->m_config.local_port_range_begin = 50050;
+//    m_p->m_config.local_port_range_end   = 50050;
 
     m_p->m_config.cb_state_changed  = &impl::onStateChanged;
     m_p->m_config.cb_candidate      = m_p->m_onCandidateHandler;
