@@ -123,10 +123,13 @@ void onRecv(juice_agent_t * agent, const char * data, size_t size, void * user_p
     if (mediareceiver)
     {
         mediareceiver->push(reinterpret_cast<const uint8_t *>(data), size);
-    } else if (mediasender)
+    }
+    else if (mediasender)
     {
-        for (const auto &jc : jcclients) {
-            if (jc.second.get() == caller) {
+        for (const auto &jc : jcclients)
+        {
+            if (jc.second.get() == caller)
+            {
                 mediasender->push(jc.first, reinterpret_cast<const uint8_t *>(data), size);
             }
         }
