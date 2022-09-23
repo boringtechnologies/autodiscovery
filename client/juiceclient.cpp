@@ -187,10 +187,10 @@ bool JuiceClient::init()
 
     memset(&m_p->m_turnServer, 0, sizeof(juice_turn_server_t));
 
-    m_p->m_turnServer.host     = "openrelay.metered.ca";
-    m_p->m_turnServer.port     = 443;
-    m_p->m_turnServer.username = "openrelayproject";
-    m_p->m_turnServer.password = "openrelayproject";
+    m_p->m_turnServer.host     = "62.210.189.244";
+    m_p->m_turnServer.port     = 3478;
+    m_p->m_turnServer.username = "testUser";
+    m_p->m_turnServer.password = "testPassword";
 
     m_p->m_config.turn_servers       = &m_p->m_turnServer;
     m_p->m_config.turn_servers_count = 1;
