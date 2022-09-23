@@ -35,7 +35,7 @@ void onStateChanged(juice_agent_t * agent, juice_state_t state, void * user_ptr)
     std::string id = caller->id();
 
     // std::cout << "onStateChanged " << state << " " << juice_state_to_string(state) << std::endl;
-    // std::cout << "P2P connection <" << state << "> " << juice_state_to_string(state) << std::endl;
+    std::cout << "P2P connection <" << state << "> " << juice_state_to_string(state) << std::endl;
 
     if (state == JUICE_STATE_COMPLETED)
     {
