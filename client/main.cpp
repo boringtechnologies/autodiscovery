@@ -80,7 +80,7 @@ void onStateChanged(juice_agent_t * agent, juice_state_t state, void * user_ptr)
 //******************************************************************************
 void onCandidate(juice_agent_t * agent, const char * sdp, void * user_ptr)
 {
-    std::cout << "onCandidate " << sdp << std::endl;
+    // std::cout << "onCandidate " << sdp << std::endl;
 
     rpcroc::JuiceClient * caller = reinterpret_cast<rpcroc::JuiceClient *>(user_ptr);
 
