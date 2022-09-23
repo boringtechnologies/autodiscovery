@@ -48,6 +48,11 @@ class JuiceClient::impl
     std::atomic<bool>   m_destroymarker;
     std::mutex          m_sendLocker;
     std::thread         m_pinger;
+
+    std::chrono::system_clock::time_point m_lastReceived;
+
+    static void onStateChanged(juice_agent_t * agent, juice_state_t state, void * user_ptr);
+    static void onRecv(juice_agent_t * agent, const char * data, size_t size, void * user_ptr);
 };
 
 //******************************************************************************
@@ -68,10 +73,27 @@ JuiceClient::JuiceClient(const std::string & id,
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
-            if (m_p->m_agent && juice_get_state(m_p->m_agent) == JUICE_STATE_COMPLETED)
+            if (m_p->m_agent)
             {
-                // send ping, raw message
-                sendMessage(reinterpret_cast<const uint8_t *>(pingmsg.c_str()), pingmsg.size());
+                if (juice_get_state(m_p->m_agent) > JUICE_STATE_DISCONNECTED)
+                {
+                    if (m_p->m_lastReceived + std::chrono::milliseconds(5000) < std::chrono::system_clock::now())
+                    {
+                        std::cout << "disconnected???" << std::endl;
+
+                        // TODO disconnected? reconnect?
+                        m_p->m_onStateChangedHandler(m_p->m_agent, JUICE_STATE_DISCONNECTED, this);
+
+                        // TODO what else?
+                        disconnect();
+                    }
+                }
+
+                if (m_p->m_agent && juice_get_state(m_p->m_agent) == JUICE_STATE_COMPLETED)
+                {
+                    // send ping, raw message
+                    sendMessage(reinterpret_cast<const uint8_t *>(pingmsg.c_str()), pingmsg.size());
+                }
             }
         }
     });
@@ -87,6 +109,71 @@ JuiceClient::~JuiceClient()
         m_p->m_pinger.join();
     }
     disconnect();
+}
+
+//******************************************************************************
+//******************************************************************************
+// static
+void JuiceClient::impl::onStateChanged(juice_agent_t * agent, juice_state_t state, void * user_ptr)
+{
+    // TODO ugly, use bind etc.
+    rpcroc::JuiceClient       * caller = reinterpret_cast<rpcroc::JuiceClient *>(user_ptr);
+    rpcroc::JuiceClient::impl * cimpl  = caller->m_p.get();
+
+    cimpl->m_lastReceived = std::chrono::system_clock::now();
+
+    // default, call handler
+    if (caller->m_p->m_onStateChangedHandler)
+    {
+        caller->m_p->m_onStateChangedHandler(agent, state, user_ptr);
+    }
+}
+
+//******************************************************************************
+//******************************************************************************
+// static
+void JuiceClient::impl::onRecv(juice_agent_t * agent, const char * data, size_t size, void * user_ptr)
+{
+    // TODO ugly, use bind etc.
+    rpcroc::JuiceClient       * caller = reinterpret_cast<rpcroc::JuiceClient *>(user_ptr);
+    rpcroc::JuiceClient::impl * cimpl  = caller->m_p.get();
+
+    cimpl->m_lastReceived = std::chrono::system_clock::now();
+
+    // std::cout << size << " bytes from " << caller->id() << std::endl;
+    // std::cout << "    " << std::string(data, size) << std::endl;
+
+    // TODO need incapsulate in client
+    if (memcmp(data, "JP2PMSG ", 8) == 0)
+    {
+        // p2p text message, need forward to handler?
+        std::cout << size << " bytes from " << caller->id() << std::endl;
+        std::cout << "    " << std::string(data+8, size-8) << std::endl;
+        return;
+    }
+    if (memcmp(data, "JP2PING ", 8) == 0)
+    {
+        // ping
+//        std::cout << size << " bytes ping from " << caller->id() << std::endl;
+//        std::cout << "    " << std::string(data, size) << std::endl;
+
+        std::string pongmsg = "JP2PONG " + caller->id();
+        caller->sendMessage(reinterpret_cast<const uint8_t *>(pongmsg.c_str()), pongmsg.size());
+        return;
+    }
+    if (memcmp(data, "JP2PONG ", 8) == 0)
+    {
+        // pong
+//        std::cout << size << " bytes pong from " << caller->id() << std::endl;
+//        std::cout << "    " << std::string(data, size) << std::endl;
+        return;
+    }
+
+    // default, call handler
+    if (caller->m_p->m_onReceiveHandler)
+    {
+        caller->m_p->m_onReceiveHandler(agent, data, size, user_ptr);
+    }
 }
 
 //******************************************************************************
@@ -108,10 +195,10 @@ bool JuiceClient::init()
     m_p->m_config.turn_servers       = &m_p->m_turnServer;
     m_p->m_config.turn_servers_count = 1;
 
-    m_p->m_config.cb_state_changed  = m_p->m_onStateChangedHandler;
+    m_p->m_config.cb_state_changed  = &impl::onStateChanged;
     m_p->m_config.cb_candidate      = m_p->m_onCandidateHandler;
     m_p->m_config.cb_gathering_done = m_p->m_onGatheringDoneHandler;
-    m_p->m_config.cb_recv           = m_p->m_onReceiveHandler;
+    m_p->m_config.cb_recv           = &impl::onRecv;
     m_p->m_config.user_ptr          = this;
 
     m_p->m_agent = juice_create(&m_p->m_config);

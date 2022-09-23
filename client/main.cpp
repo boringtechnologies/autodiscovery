@@ -31,15 +31,15 @@ std::shared_ptr<media::Receiver> mediareceiver;
 //******************************************************************************
 void onStateChanged(juice_agent_t * agent, juice_state_t state, void * user_ptr)
 {
+    rpcroc::JuiceClient * caller = reinterpret_cast<rpcroc::JuiceClient *>(user_ptr);
+    std::string id = caller->id();
+
     // std::cout << "onStateChanged " << state << " " << juice_state_to_string(state) << std::endl;
-    std::cout << "P2P connection <" << state << "> " << juice_state_to_string(state) << std::endl;
+    // std::cout << "P2P connection <" << state << "> " << juice_state_to_string(state) << std::endl;
 
-//    rpcroc::JuiceClient * caller = reinterpret_cast<rpcroc::JuiceClient *>(user_ptr);
-//    std::string id = caller->id();
-
-//    if (state == JUICE_STATE_COMPLETED)
-//    {
-//        std::cout << "P2P connection, " << id << " connected" << std::endl;
+    if (state == JUICE_STATE_COMPLETED)
+    {
+        std::cout << "P2P connection, " << id << " connected" << std::endl;
 
 //        if (!mediasender)
 //        {
@@ -60,15 +60,20 @@ void onStateChanged(juice_agent_t * agent, juice_state_t state, void * user_ptr)
 //                });
 //            }
 //        }
-//    }
-//    else if (state == JUICE_STATE_DISCONNECTED)
-//    {
-//        if (mediasender)
-//        {
-//            mediasender->removeReceiver(id);
-//        }
-//        std::cout << "P2P connection, " << id << " disconnected" << std::endl;
-//    }
+    }
+    else if (state == JUICE_STATE_DISCONNECTED)
+    {
+        if (mediasender)
+        {
+            mediasender->removeReceiver(id);
+        }
+        if (mediareceiver)
+        {
+            mediareceiver->stop();
+            mediareceiver.reset();
+        }
+        std::cout << "P2P connection, " << id << " disconnected" << std::endl;
+    }
 }
 
 //******************************************************************************
@@ -101,33 +106,6 @@ void onRecv(juice_agent_t * agent, const char * data, size_t size, void * user_p
     // std::cout << size << " bytes from " << caller->id() << std::endl;
     // std::cout << "    " << std::string(data, size) << std::endl;
 
-    // TODO need incapsulate in client
-    if (memcmp(data, "JP2PMSG ", 8) == 0)
-    {
-        // p2p text message
-        std::cout << size << " bytes from " << caller->id() << std::endl;
-        std::cout << "    " << std::string(data+8, size-8) << std::endl;
-        return;
-    }
-    if (memcmp(data, "JP2PING ", 8) == 0)
-    {
-        // ping
-        std::cout << size << " bytes ping from " << caller->id() << std::endl;
-        std::cout << "    " << std::string(data, size) << std::endl;
-
-        std::string pongmsg = "JP2PONG " + caller->id();
-        caller->sendMessage(reinterpret_cast<const uint8_t *>(pongmsg.c_str()), pongmsg.size());
-        return;
-    }
-    if (memcmp(data, "JP2PONG ", 8) == 0)
-    {
-        // pong
-        std::cout << size << " bytes pong from " << caller->id() << std::endl;
-        std::cout << "    " << std::string(data, size) << std::endl;
-        return;
-    }
-
-    // stream by default
     if (mediareceiver)
     {
         mediareceiver->push(reinterpret_cast<const uint8_t *>(data), size);
