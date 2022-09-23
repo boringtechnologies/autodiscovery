@@ -45,11 +45,6 @@ public:
 private:
     class impl;
     std::shared_ptr<impl> m_p;
-
-    on_state_changed_t  m_onStateChangedHandler;
-    on_candidate_t      m_onCandidateHandler;
-    on_gathering_done_t m_onGatheringDoneHandler;
-    on_recv_t           m_onReceiveHandler;
 };
 
 } // namespace rpcroc

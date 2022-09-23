@@ -7,6 +7,7 @@
 #include <iostream>
 #include <thread>
 #include <mutex>
+#include <atomic>
 
 #include <juice/juice.h>
 
@@ -21,9 +22,15 @@ class JuiceClient::impl
 {
     friend class JuiceClient;
 
-    impl(JuiceClient * owner, const std::string & id)
+    impl(JuiceClient * owner, const std::string & id,
+         on_state_changed_t onStateChangedHandler, on_candidate_t onCandidateHandler,
+         on_gathering_done_t onGatheringDoneHandler, on_recv_t onReceiveHandler)
         : m_o(owner)
         , m_id(id)
+        , m_onStateChangedHandler(onStateChangedHandler)
+        , m_onCandidateHandler(onCandidateHandler)
+        , m_onGatheringDoneHandler(onGatheringDoneHandler)
+        , m_onReceiveHandler(onReceiveHandler)
     {
     }
 
@@ -33,7 +40,14 @@ class JuiceClient::impl
     juice_config_t      m_config;
     juice_turn_server_t m_turnServer;
 
+    on_state_changed_t  m_onStateChangedHandler;
+    on_candidate_t      m_onCandidateHandler;
+    on_gathering_done_t m_onGatheringDoneHandler;
+    on_recv_t           m_onReceiveHandler;
+
+    std::atomic<bool>   m_destroymarker;
     std::mutex          m_sendLocker;
+    std::thread         m_pinger;
 };
 
 //******************************************************************************
@@ -41,19 +55,37 @@ class JuiceClient::impl
 JuiceClient::JuiceClient(const std::string & id,
                          on_state_changed_t onStateChangedHandler, on_candidate_t onCandidateHandler,
                          on_gathering_done_t onGatheringDoneHandler, on_recv_t onReceiveHandler)
-    : m_p(new impl(this, id))
-    , m_onStateChangedHandler(onStateChangedHandler)
-    , m_onCandidateHandler(onCandidateHandler)
-    , m_onGatheringDoneHandler(onGatheringDoneHandler)
-    , m_onReceiveHandler(onReceiveHandler)
+    : m_p(new impl(this, id,
+                   onStateChangedHandler, onCandidateHandler,
+                   onGatheringDoneHandler, onReceiveHandler))
 {
+    m_p->m_destroymarker = false;
+    m_p->m_pinger = std::thread([this]()
+    {
+        const std::string pingmsg = "JP2PING " + this->id();
 
+        while (!m_p->m_destroymarker)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+
+            if (m_p->m_agent && juice_get_state(m_p->m_agent) == JUICE_STATE_COMPLETED)
+            {
+                // send ping, raw message
+                sendMessage(reinterpret_cast<const uint8_t *>(pingmsg.c_str()), pingmsg.size());
+            }
+        }
+    });
 }
 
 //******************************************************************************
 //******************************************************************************
 JuiceClient::~JuiceClient()
 {
+    if (m_p->m_pinger.joinable())
+    {
+        m_p->m_destroymarker = true;
+        m_p->m_pinger.join();
+    }
     disconnect();
 }
 
@@ -76,10 +108,10 @@ bool JuiceClient::init()
     m_p->m_config.turn_servers       = &m_p->m_turnServer;
     m_p->m_config.turn_servers_count = 1;
 
-    m_p->m_config.cb_state_changed  = m_onStateChangedHandler;
-    m_p->m_config.cb_candidate      = m_onCandidateHandler;
-    m_p->m_config.cb_gathering_done = m_onGatheringDoneHandler;
-    m_p->m_config.cb_recv           = m_onReceiveHandler;
+    m_p->m_config.cb_state_changed  = m_p->m_onStateChangedHandler;
+    m_p->m_config.cb_candidate      = m_p->m_onCandidateHandler;
+    m_p->m_config.cb_gathering_done = m_p->m_onGatheringDoneHandler;
+    m_p->m_config.cb_recv           = m_p->m_onReceiveHandler;
     m_p->m_config.user_ptr          = this;
 
     m_p->m_agent = juice_create(&m_p->m_config);

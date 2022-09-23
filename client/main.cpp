@@ -101,6 +101,7 @@ void onRecv(juice_agent_t * agent, const char * data, size_t size, void * user_p
     // std::cout << size << " bytes from " << caller->id() << std::endl;
     // std::cout << "    " << std::string(data, size) << std::endl;
 
+    // TODO need incapsulate in client
     if (memcmp(data, "JP2PMSG ", 8) == 0)
     {
         // p2p text message
@@ -111,11 +112,18 @@ void onRecv(juice_agent_t * agent, const char * data, size_t size, void * user_p
     if (memcmp(data, "JP2PING ", 8) == 0)
     {
         // ping
+        std::cout << size << " bytes ping from " << caller->id() << std::endl;
+        std::cout << "    " << std::string(data, size) << std::endl;
+
+        std::string pongmsg = "JP2PONG " + caller->id();
+        caller->sendMessage(reinterpret_cast<const uint8_t *>(pongmsg.c_str()), pongmsg.size());
         return;
     }
     if (memcmp(data, "JP2PONG ", 8) == 0)
     {
         // pong
+        std::cout << size << " bytes pong from " << caller->id() << std::endl;
+        std::cout << "    " << std::string(data, size) << std::endl;
         return;
     }
 
