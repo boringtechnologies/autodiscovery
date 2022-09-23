@@ -101,6 +101,25 @@ void onRecv(juice_agent_t * agent, const char * data, size_t size, void * user_p
     // std::cout << size << " bytes from " << caller->id() << std::endl;
     // std::cout << "    " << std::string(data, size) << std::endl;
 
+    if (memcmp(data, "JP2PMSG ", 8) == 0)
+    {
+        // p2p text message
+        std::cout << size << " bytes from " << caller->id() << std::endl;
+        std::cout << "    " << std::string(data+8, size-8) << std::endl;
+        return;
+    }
+    if (memcmp(data, "JP2PING ", 8) == 0)
+    {
+        // ping
+        return;
+    }
+    if (memcmp(data, "JP2PONG ", 8) == 0)
+    {
+        // pong
+        return;
+    }
+
+    // stream by default
     if (mediareceiver)
     {
         mediareceiver->push(reinterpret_cast<const uint8_t *>(data), size);
@@ -493,6 +512,7 @@ int main(int argc, char * argv[])
                     // std::cout << len << " bytes to " << id << std::endl;
                 });
             }
+            std::cout << "started to " << id << std::endl;
         }
         else if (command == "receivestream")
         {

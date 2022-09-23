@@ -5,6 +5,8 @@
 
 #include <cstring>
 #include <iostream>
+#include <thread>
+#include <mutex>
 
 #include <juice/juice.h>
 
@@ -30,6 +32,8 @@ class JuiceClient::impl
     juice_agent_t     * m_agent = nullptr;
     juice_config_t      m_config;
     juice_turn_server_t m_turnServer;
+
+    std::mutex          m_sendLocker;
 };
 
 //******************************************************************************
@@ -127,13 +131,26 @@ void JuiceClient::addRemote(const std::string & sdpRemote)
 //******************************************************************************
 void JuiceClient::sendMessage(const std::string & message)
 {
-    juice_send(m_p->m_agent, message.c_str(), message.size());
+    std::lock_guard<std::mutex> l(m_p->m_sendLocker);
+
+    // text message with prefix
+
+    const static size_t prefixsize = 8;
+    const static size_t datasize   = 1096;
+    char buffer[datasize] = "JP2PMSG ";
+    const uint32_t size = std::min(message.size(), datasize);
+    memcpy(buffer + 8, message.c_str(), size);
+    juice_send(m_p->m_agent, buffer, size + prefixsize);
 }
 
 //******************************************************************************
 //******************************************************************************
 void JuiceClient::sendMessage(const uint8_t * data, const uint32_t size)
 {
+    std::lock_guard<std::mutex> l(m_p->m_sendLocker);
+
+    // plain message
+
     juice_send(m_p->m_agent, reinterpret_cast<const char *>(data), size);
 }
 
