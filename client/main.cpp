@@ -5,6 +5,7 @@
 #include "juiceclient.h"
 
 #include <sync.hpp>
+#include <glib.h>
 
 #include <iostream>
 
@@ -256,6 +257,9 @@ int main(int argc, char * argv[])
 
     while (true)
     {
+        // Run one default GMainContext iteration for NSApp purposes
+        g_main_context_iteration(NULL, FALSE);
+
         std::string command;
         std::cout << "> ";
         std::cin >> command;
