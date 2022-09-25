@@ -2,6 +2,7 @@
 #include <glib-unix.h>
 #include <sys/socket.h>
 
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -237,7 +238,7 @@ int main(int argc, char **argv) {
         std::string sender_addr;
         uint16_t port;
         media::PlaybackDevice dev;
-        std::chrono::duration<int> delay;
+        std::chrono::duration<int, std::milli> delay = std::chrono::milliseconds(500);
         bool sync = true;
         std::string inp;
         loop = g_main_loop_new(NULL, false);

@@ -25,7 +25,7 @@ std::shared_ptr<media::Sender>   mediasender;
 // receiver
 media::PlaybackDevice            playbackDevice;
 media::ClockInfo                 receiverclock = {"66.228.38.186", 10000};
-std::chrono::duration<int>       delay;
+std::chrono::duration<int, std::milli> delay = std::chrono::milliseconds(500);
 std::shared_ptr<media::Receiver> mediareceiver;
 
 //******************************************************************************
@@ -533,7 +533,7 @@ int main(int argc, char * argv[])
 
             std::string id = v[0];
             bool synchronize = true;
-            mediareceiver.reset(new media::Receiver(id, mediatype, playbackDevice, receiverclock, delay,synchronize,
+            mediareceiver.reset(new media::Receiver(id, mediatype, playbackDevice, receiverclock, delay, synchronize,
                         [id](const uint8_t *data, size_t len)
                         {
                             jcclients[id]->sendMessage(data, len);

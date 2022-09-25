@@ -90,8 +90,8 @@ static GstElement *get_audio_device(const std::string &id) {
 
 media::Receiver::Receiver(const std::string &id, MediaType type,
                           const PlaybackDevice &device, const ClockInfo &clock,
-                          std::chrono::duration<int> delay, bool synchronize,
-                          media::WriteCallback write_cb)
+                          std::chrono::duration<int, std::milli> delay,
+                          bool synchronize, media::WriteCallback write_cb)
     : thread(nullptr), write_cb(write_cb) {
     GstBus *bus;
     GstElement *rtpbin, *depayloader, *decoder, *sink, *appsink;
@@ -175,7 +175,8 @@ media::Receiver::Receiver(const std::string &id, MediaType type,
         gst_pipeline_use_clock(GST_PIPELINE(pipeline), net_clock);
         /* Set this high enough so that it's higher than the minimum latency
          * on all receivers */
-        gst_pipeline_set_latency(GST_PIPELINE(pipeline), 500 * GST_MSECOND);
+        gst_pipeline_set_latency(GST_PIPELINE(pipeline),
+                                 delay.count() * GST_MSECOND);
     }
 }
 
