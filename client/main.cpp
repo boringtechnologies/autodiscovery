@@ -241,24 +241,12 @@ std::vector<std::string> parseCommand(const std::string & cmd)
     return elems;
 }
 
-//******************************************************************************
-//******************************************************************************
-int main(int argc, char * argv[])
-{
-    if (argc < 2)
-    {
-        std::cout << "try " << argv[0] << " ip:port <localhost:50051>" << std::endl;
-        return 0;
-    }
-
-    std::string target = argv[1];
-
+void cli(std::string &target, GMainLoop *mainloop) {
     printHelp();
 
     while (true)
     {
         // Run one default GMainContext iteration for NSApp purposes
-        g_main_context_iteration(NULL, FALSE);
 
         std::string command;
         std::cout << "> ";
@@ -579,6 +567,27 @@ int main(int argc, char * argv[])
 
         it.second->disconnect();
     }
+
+    g_main_loop_quit(mainloop);
+}
+
+//******************************************************************************
+//******************************************************************************
+int main(int argc, char * argv[])
+{
+    if (argc < 2)
+    {
+        std::cout << "try " << argv[0] << " ip:port <localhost:50051>" << std::endl;
+        return 0;
+    }
+
+    std::string target = argv[1];
+    g_autoptr(GMainLoop) mainloop = g_main_loop_new(NULL, false);
+
+    std::thread cli_thread = std::thread(cli, std::ref(target), mainloop);
+
+    g_main_loop_run(mainloop);
+    cli_thread.join();
 
     return 0;
 }
