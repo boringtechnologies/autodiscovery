@@ -70,6 +70,7 @@ static GstElement *get_video_device(const media::CaptureDevice &device) {
     if (!device.name.empty()) {
         g_object_set(G_OBJECT(source), "device-index",
                      std::stoi(device.name, nullptr, 10), nullptr);
+    }
 #endif
 
     return source;
